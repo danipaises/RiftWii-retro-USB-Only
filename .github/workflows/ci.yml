@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: 2026 RiftWii contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+name: Base checks
+on: workflow_dispatch
+jobs:
+  route:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo 'The full build and test pipeline is Retro USB experimental.'

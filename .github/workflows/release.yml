@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: 2026 RiftWii contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+name: Release policy
+on: workflow_dispatch
+jobs:
+  policy:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo 'Use Retro USB experimental. v1 Complete is not ready.'

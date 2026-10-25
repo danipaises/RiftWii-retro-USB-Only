@@ -47,12 +47,12 @@ jobs:
         if: success() && !startsWith(github.ref, 'refs/tags/v1.')
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: v0.1.0-alpha.1
+          TAG: v0.1.0-alpha.2
         shell: bash
         run: |
           set -euo pipefail
           command -v gh || { echo 'gh unavailable: artifact is retained; release not published'; exit 1; }
-          gh release create "$TAG" --target "${{ github.sha }}" "$SOURCE"/dist/* --repo danipaises/RiftWii-retro-USB-Only --prerelease --title "Retro USB experimental $TAG" --notes-file "$SOURCE/retro-integration/STATUS.md"
+          gh release create "$TAG" --target "$(git -C "$SOURCE" rev-parse HEAD)" "$SOURCE"/dist/* --repo danipaises/RiftWii-retro-USB-Only --prerelease --title "Retro USB experimental $TAG" --notes-file "$SOURCE/retro-integration/STATUS.md"
       - name: Reject premature Complete releases
         if: startsWith(github.ref, 'refs/tags/v1.')
         run: echo 'v1 Complete blocked until interface, saves and return requirements are verified'; exit 1

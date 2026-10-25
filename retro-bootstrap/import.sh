@@ -22,7 +22,8 @@ git tag usb-only-recovered-base
 # Keep the publication commit and all original author history as parents.
 git merge --allow-unrelated-histories -X ours --no-edit origin/main
 git apply --exclude=.github/workflows/retro.yml "$bootstrap/retro-bootstrap/retro.patch"
+git checkout origin/main -- .github/workflows
 git add -u
 git ls-files --others --exclude-standard -z | git update-index --add -z --stdin
 git commit -m 'Add the experimental USB retro scanner and per-emulator launch adapters.'
-git -c http.extraheader="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)" push origin main refs/tags/usb-only-recovered-base || echo "::warning::GitHub refused history publication; sources and history will remain in the build artifact."
+git -c http.extraheader="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)" push origin main || echo "::warning::GitHub refused history publication; sources and history will remain in the build artifact."
