@@ -321,7 +321,7 @@ index 02f32ea..5d0576e 100644
 +      - run: echo 'Use Retro USB experimental. v1 Complete is not ready.'
 diff --git a/.github/workflows/retro.yml b/.github/workflows/retro.yml
 new file mode 100644
-index 0000000..f174a77
+index 0000000..42f7da4
 --- /dev/null
 +++ b/.github/workflows/retro.yml
 @@ -0,0 +1,58 @@
@@ -353,7 +353,7 @@ index 0000000..f174a77
 +        run: |
 +          if [ -f imported/CMakeLists.txt ]; then echo "SOURCE=$PWD/imported" >> "$GITHUB_ENV"; else echo "SOURCE=$PWD" >> "$GITHUB_ENV"; fi
 +      - name: Prepare host tools
-+        run: apt-get update -qq && apt-get install -y -qq cmake ninja-build zlib1g-dev zstd python3-pip && python3 -m pip install --break-system-packages py7zr==1.0.0
++        run: apt-get update -qq && apt-get install -y -qq cmake ninja-build zlib1g-dev zstd python3-pip gh && python3 -m pip install --break-system-packages py7zr==1.0.0
 +      - name: Compile and test
 +        shell: bash
 +        run: |
@@ -982,10 +982,10 @@ index 0000000..6d21b1c
 +]
 diff --git a/retro-integration/package.py b/retro-integration/package.py
 new file mode 100644
-index 0000000..a6e2f01
+index 0000000..0c59afe
 --- /dev/null
 +++ b/retro-integration/package.py
-@@ -0,0 +1,83 @@
+@@ -0,0 +1,84 @@
 +# SPDX-FileCopyrightText: 2026 RiftWii contributors
 +# SPDX-License-Identifier: GPL-3.0-or-later
 +"""Build a noncommercial alpha kit; never overwrite user saves/settings."""
@@ -1045,6 +1045,7 @@ index 0000000..a6e2f01
 +    shutil.copy2(ROOT/'riftwii.dol',app/'boot.dol')
 +    for f in (ROOT/'build-plugins/plugins').glob('*.rwp'):
 +        d=app/'plugins';d.mkdir(exist_ok=True);shutil.copy2(f,d/f.name)
++    shutil.copy2(ROOT/'wii/font/rounded.ttf',app/'font.ttf')
 +    for f in ['icon.png','meta.xml']:
 +        source=ROOT/'channel/installer/hbc'/f
 +        if f=='icon.png':shutil.copy2(source,app/f)

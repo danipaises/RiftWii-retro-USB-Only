@@ -21,7 +21,7 @@ git commit -m 'Recover the tested USB-only source over the original upstream his
 git tag usb-only-recovered-base
 # Keep the publication commit and all original author history as parents.
 git merge --allow-unrelated-histories -X ours --no-edit origin/main
-git apply "$bootstrap/retro-bootstrap/retro.patch"
+git apply --exclude=.github/workflows/retro.yml "$bootstrap/retro-bootstrap/retro.patch"
 git add -u
 git ls-files --others --exclude-standard -z | git update-index --add -z --stdin
 git commit -m 'Add the experimental USB retro scanner and per-emulator launch adapters.'

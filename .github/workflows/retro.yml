@@ -26,7 +26,7 @@ jobs:
         run: |
           if [ -f imported/CMakeLists.txt ]; then echo "SOURCE=$PWD/imported" >> "$GITHUB_ENV"; else echo "SOURCE=$PWD" >> "$GITHUB_ENV"; fi
       - name: Prepare host tools
-        run: apt-get update -qq && apt-get install -y -qq cmake ninja-build zlib1g-dev zstd python3-pip && python3 -m pip install --break-system-packages py7zr==1.0.0
+        run: apt-get update -qq && apt-get install -y -qq cmake ninja-build zlib1g-dev zstd python3-pip gh && python3 -m pip install --break-system-packages py7zr==1.0.0
       - name: Compile and test
         shell: bash
         run: |
