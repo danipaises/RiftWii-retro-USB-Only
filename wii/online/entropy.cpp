@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "riftwii/storagepaths.hpp"
 #include "entropy.hpp"
 
 #include <gccore.h>
@@ -22,7 +23,7 @@ namespace riftwii::wii {
 
 namespace {
 
-constexpr const char* kSeedFile = "sd:/riftwii/seed.bin";
+const char* kSeedFile() { return RIFTWII_PATH("riftwii/seed.bin"); }
 constexpr std::size_t kPoolBytes = 32;
 
 // The GUI thread stirs in the Remotes every frame while a download thread
@@ -86,9 +87,9 @@ void Derive(const char* label, unsigned char out[kPoolBytes]) {
 void WriteSeedFile(unsigned char next[kPoolBytes]) {
     {
         CardWriteHold hold;
-        if (FILE* f = std::fopen(kSeedFile, "wb")) {
+        if (FILE* f = std::fopen(kSeedFile(), "wb")) {
             const bool ok = std::fwrite(next, 1, kPoolBytes, f) == kPoolBytes;
-            if (std::fclose(f) != 0 || !ok) std::remove(kSeedFile);
+            if (std::fclose(f) != 0 || !ok) std::remove(kSeedFile());
         }
     }
     std::memset(next, 0, kPoolBytes);
@@ -150,7 +151,7 @@ bool StirStart(unsigned char next[kPoolBytes], unsigned& settings) {
     settings = StirConsoleSettings();
     unsigned char saved[kPoolBytes];
     bool had = false;
-    if (FILE* f = std::fopen(kSeedFile, "rb")) {
+    if (FILE* f = std::fopen(kSeedFile(), "rb")) {
         had = std::fread(saved, 1, sizeof(saved), f) == sizeof(saved);
         std::fclose(f);
     }

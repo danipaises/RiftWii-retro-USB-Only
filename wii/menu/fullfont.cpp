@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "riftwii/storagepaths.hpp"
 #include "fullfont.hpp"
 
 #include <gccore.h>
@@ -43,7 +44,7 @@ constexpr std::size_t kPoolBytes = 384 * 1024;
 // Small enough that one read is one or two of the card's sectors runs, as
 // FreeType reads a glyph's few hundred bytes at a time.
 constexpr std::size_t kFileBufferBytes = 4096;
-constexpr const char* kDefaultPath = "sd:/apps/riftwii/font.ttf";
+const char* kDefaultPath() { return RIFTWII_PATH("apps/riftwii/font.ttf"); }
 
 mutex_t g_lock = LWP_MUTEX_NULL;
 
@@ -250,13 +251,13 @@ FT_Face FaceLocked() {
     if (g_face != nullptr) return g_face;
     if (!g_enabled || g_menu_ended || g_closed_holds > 0 || g_missing) return nullptr;
     const std::string beside = FullFontPath();
-    if (!DriveReadable(beside) && !DriveReadable(kDefaultPath)) return nullptr;  // tried again later
+    if (!DriveReadable(beside) && !DriveReadable(kDefaultPath())) return nullptr;  // tried again later
     // Beside the running boot.dol, then where the release zip puts it (a
     // DOL started by a loader that passes no path, or a broken copy beside
     // it): missing only when neither opens.
     std::vector<std::string> candidates;
     if (FileThere(beside)) candidates.push_back(beside);
-    if (beside != kDefaultPath && FileThere(kDefaultPath)) candidates.push_back(kDefaultPath);
+    if (beside != kDefaultPath() && FileThere(kDefaultPath())) candidates.push_back(kDefaultPath());
     if (candidates.empty()) {
         NoteMissing(beside + " is missing", true);
         return nullptr;

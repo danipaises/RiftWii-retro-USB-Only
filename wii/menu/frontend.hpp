@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include "riftwii/storagepaths.hpp"
+
 #include <string>
 
 #include "modplan.hpp"
@@ -15,7 +17,7 @@ namespace riftwii::wii {
 // Riivolution reads pack XMLs from both folders, on every drive it mounts.
 constexpr const char* kPackageDir = "sd:/riivolution";
 constexpr const char* kPackageDir2 = "sd:/apps/riivolution";
-constexpr const char* kChoicesDir = "sd:/riftwii/choices";
+inline const char* kChoicesDir() { return RIFTWII_PATH("riftwii/choices"); }
 // ScanPackages says this when the card scanned cleanly; the mods screen
 // shows its hotkey line instead (it says the same, and more).
 constexpr const char* kScanReady = "ready";

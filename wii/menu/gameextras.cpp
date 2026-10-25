@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "riftwii/storagepaths.hpp"
 #include "gameextras.hpp"
 
 #include <cstdio>
@@ -20,10 +21,10 @@
 namespace riftwii::wii {
 namespace {
 
-constexpr const char* kHistoryPath = "sd:/riftwii/history.txt";
+const char* kHistoryPath() { return RIFTWII_PATH("riftwii/history.txt"); }
 PlayHistory g_history;
 bool g_history_loaded = false;
-constexpr const char* kHomeOrderPath = "sd:/riftwii/order.txt";
+const char* kHomeOrderPath() { return RIFTWII_PATH("riftwii/order.txt"); }
 std::vector<std::string> g_home_order;
 bool g_home_order_loaded = false;
 bool g_home_order_unreadable = false;  // there, but not read: never written over
@@ -75,7 +76,7 @@ bool LoadGameCheats(const std::string& game_id, int revision, bool download, Che
 
 std::string BorderNote(const std::string& game_id) {
     std::string text;
-    if (game_id.empty() || !read_text("sd:/riftwii/choices/" + game_id + ".video", text)) return "";
+    if (game_id.empty() || !read_text(RIFTWII_PATH("riftwii/choices/") + game_id + ".video", text)) return "";
     const bool side = text.find("side_borders = yes") != std::string::npos;
     const bool top = text.find("top_borders = yes") != std::string::npos;
     if (side && top) return tr("Last time, this game left black borders on all sides.");
@@ -88,16 +89,16 @@ const PlayHistory& History() {
     if (!g_history_loaded) {
         g_history_loaded = true;
         std::string text;
-        if (read_text(kHistoryPath, text)) g_history.parse(text);
+        if (read_text(kHistoryPath(), text)) g_history.parse(text);
     }
     return g_history;
 }
 
 namespace {
 void WriteHistory() {
-    mkdir("sd:/riftwii", 0777);
+    mkdir(RIFTWII_PATH("riftwii"), 0777);
     const std::string text = g_history.serialize();
-    if (FILE* f = std::fopen(kHistoryPath, "wb")) {
+    if (FILE* f = std::fopen(kHistoryPath(), "wb")) {
         std::fwrite(text.data(), 1, text.size(), f);
         std::fclose(f);
     }
@@ -112,7 +113,7 @@ void RecordPlay(const std::string& game_id) {
 }
 
 void RememberLaunchedTile(const std::string& key) {
-    mkdir("sd:/riftwii", 0777);
+    mkdir(RIFTWII_PATH("riftwii"), 0777);
     if (FILE* f = std::fopen(kLastTilePath, "wb")) {  // riftwii/profiles.hpp
         const std::string line = key + "\n";
         std::fwrite(line.data(), 1, line.size(), f);
@@ -133,8 +134,8 @@ namespace {
 // its last whole line. False when it is there but cannot be read.
 bool ReadHomeOrderFile(std::vector<std::string>& order) {
     struct stat st;
-    if (stat(kHomeOrderPath, &st) != 0) return true;  // no file yet: nothing listed
-    FILE* f = std::fopen(kHomeOrderPath, "rb");
+    if (stat(kHomeOrderPath(), &st) != 0) return true;  // no file yet: nothing listed
+    FILE* f = std::fopen(kHomeOrderPath(), "rb");
     if (!f) return false;
     std::string head(kHomeOrderMaxBytes, '\0');
     const std::size_t got = std::fread(&head[0], 1, head.size(), f);
@@ -145,7 +146,7 @@ bool ReadHomeOrderFile(std::vector<std::string>& order) {
     if (failed) return false;
     head.resize(got);
     if (cut)
-        logf("Home order: %s is larger than %u KiB, so only its first %u KiB are read\n", kHomeOrderPath,
+        logf("Home order: %s is larger than %u KiB, so only its first %u KiB are read\n", kHomeOrderPath(),
              static_cast<unsigned>(kHomeOrderMaxBytes >> 10), static_cast<unsigned>(kHomeOrderMaxBytes >> 10));
     order = parse_home_order(home_order_whole_lines(head, cut));
     return true;
@@ -158,9 +159,9 @@ const std::vector<std::string>& HomeOrder() {
         g_home_order_loaded = true;
         g_home_order_unreadable = !ReadHomeOrderFile(g_home_order);
         if (g_home_order_unreadable)
-            logf("Home order: %s is there but could not be read, so moves are not saved over it\n", kHomeOrderPath);
+            logf("Home order: %s is there but could not be read, so moves are not saved over it\n", kHomeOrderPath());
         else
-            logf("Home order: %u game(s) in %s\n", static_cast<unsigned>(g_home_order.size()), kHomeOrderPath);
+            logf("Home order: %u game(s) in %s\n", static_cast<unsigned>(g_home_order.size()), kHomeOrderPath());
     }
     return g_home_order;
 }
@@ -179,13 +180,13 @@ void SaveHomeOrder(const std::vector<std::string>& order) {
     // A file that could not be read is kept: writing the moves over it
     // would lose every place it holds.
     if (g_home_order_unreadable) {
-        logf("Home order: the move lasts until RiftWii closes; %s is left as it was\n", kHomeOrderPath);
+        logf("Home order: the move lasts until RiftWii closes; %s is left as it was\n", kHomeOrderPath());
         return;
     }
-    mkdir("sd:/riftwii", 0777);
+    mkdir(RIFTWII_PATH("riftwii"), 0777);
     // Written beside it and renamed over it, so a card pulled mid-write
     // leaves the old order whole (as settings.txt is written).
-    const std::string temp = std::string(kHomeOrderPath) + ".part";
+    const std::string temp = std::string(kHomeOrderPath()) + ".part";
     const std::string text = serialize_home_order(order);
     FILE* f = std::fopen(temp.c_str(), "wb");
     bool ok = f != nullptr;
@@ -194,16 +195,16 @@ void SaveHomeOrder(const std::vector<std::string>& order) {
         ok = std::fclose(f) == 0 && ok;
     }
     if (ok) {
-        std::remove(kHomeOrderPath);
-        ok = std::rename(temp.c_str(), kHomeOrderPath) == 0;
+        std::remove(kHomeOrderPath());
+        ok = std::rename(temp.c_str(), kHomeOrderPath()) == 0;
     }
     if (!ok) {
         std::remove(temp.c_str());
-        logf("Home order: %s could not be written, so the new order lasts until RiftWii closes\n", kHomeOrderPath);
+        logf("Home order: %s could not be written, so the new order lasts until RiftWii closes\n", kHomeOrderPath());
         return;
     }
     logf("Home order: %u game(s) written to %s\n", static_cast<unsigned>(std::min(order.size(), kHomeOrderMaxGames)),
-         kHomeOrderPath);
+         kHomeOrderPath());
 }
 
 std::string PlayNote(const std::string& game_id) {
@@ -279,7 +280,7 @@ std::vector<std::string> RestartArguments(const FrontendState& state, const Laun
     if (image != nullptr && (image->path.compare(0, 4, "sd:/") == 0 || image->path.compare(0, 5, "usb:/") == 0)) {
         h.path = image->path;
     }
-    const std::string folder = std::string(kChoicesDir) + "/";
+    const std::string folder = std::string(kChoicesDir()) + "/";
     if (state.choices_path.compare(0, folder.size(), folder) == 0) h.choices = state.choices_path.substr(folder.size());
     h.packs_given = true;
     for (const LaunchPackage& p : state.model.packages) {

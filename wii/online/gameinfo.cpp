@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "riftwii/storagepaths.hpp"
 #include "gameinfo.hpp"
 
 #include <sys/stat.h>
@@ -31,8 +32,8 @@ const char* const kOtherDatabases[] = {
     "sd:/apps/usbloader_gx/wiitdb.xml", "sd:/wiitdb.xml", "sd:/config/wiitdb.xml", "sd:/usb-loader/wiitdb.xml",
 };
 
-std::string CachePath(const std::string& lang) { return "sd:/riftwii/gameinfo-" + lang + ".txt"; }
-std::string ZipPath(const std::string& lang) { return "sd:/riftwii/wiitdb-" + lang + ".zip"; }
+std::string CachePath(const std::string& lang) { return RIFTWII_PATH("riftwii/gameinfo-") + lang + ".txt"; }
+std::string ZipPath(const std::string& lang) { return RIFTWII_PATH("riftwii/wiitdb-") + lang + ".zip"; }
 std::string MenuLocale() { return gametdb_locale(MenuLanguage()); }
 
 bool Stat(const char* path, struct stat& st) { return stat(path, &st) == 0 && st.st_size > 0; }
@@ -239,7 +240,7 @@ bool DownloadGameInfo(std::string& error, const std::function<void(std::size_t r
         logf("Game details: %s (%u bytes)\n", error.c_str(), static_cast<unsigned>(body.size()));
         return false;
     }
-    mkdir("sd:/riftwii", 0777);
+    mkdir(RIFTWII_PATH("riftwii"), 0777);
     const std::string path = ZipPath(lang);
     const std::string temp = path + ".part";
     FILE* f = std::fopen(temp.c_str(), "wb");

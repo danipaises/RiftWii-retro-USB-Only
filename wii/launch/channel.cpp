@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "channel.hpp"
+#include "riftwii/storagepaths.hpp"
 
 #include <gccore.h>
 #include <fat.h>
@@ -83,6 +84,15 @@ bool StartedByHomebrewChannel() {
            riftwii::ReturnStubKind::HomebrewChannel;
 }
 
+bool StartedByRiftWiiChannel() {
+    u64 title = 0;
+    if (ES_GetTitleID(&title) < 0) return false;
+    for (u64 candidate : kChannelTitles) {
+        if (title == candidate) return true;
+    }
+    return false;
+}
+
 unsigned long long HomebrewChannelTitle() {
     static const u64 kTitles[] = {0x000100014C554C5Aull, 0x000100014F484243ull, 0x0001000148415858ull,
                                   0x00010001AF1BF516ull};
@@ -135,6 +145,10 @@ void ChannelUpdateNotNow() {
 }
 
 bool ChannelInstallerPresent(std::string& why) {
+    if (PrimaryOnUsb()) {
+        why = "Channel installation is disabled in the USB development build; start it from the Homebrew Channel";
+        return false;
+    }
     if (installer_on_card()) return true;
     why = "Copy apps/riftwii_channel from the RiftWii zip to the SD card first";
     return false;
@@ -154,6 +168,10 @@ bool ChannelCanInstall(std::string& why) {
 }
 
 bool StartChannelInstaller(std::string& error, bool allow_unmarked) {
+    if (PrimaryOnUsb()) {
+        error = "Channel installation is disabled in the USB development build";
+        return false;
+    }
     logf("Channel: starting %s\n", kInstaller);
     u32 size = 0;
     u8* dol = dolboot_read(kInstaller, &size, [](u32 n) -> void* { return memalign(32, n); },

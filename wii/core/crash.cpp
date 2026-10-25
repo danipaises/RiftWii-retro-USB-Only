@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "riftwii/storagepaths.hpp"
 #include "crash.hpp"
 
 #include <gccore.h>
@@ -185,7 +186,7 @@ void* SaveReport(void*) {
         logf("%.*s\n", static_cast<int>(n), line);
         line += n + (end ? 1 : 0);
     }
-    if (FILE* f = std::fopen("sd:/riftwii/crash.txt", "w")) {
+    if (FILE* f = std::fopen(RIFTWII_PATH("riftwii/crash.txt"), "w")) {
         g_saved = std::fputs(g_report, f) >= 0;
         g_saved = std::fclose(f) == 0 && g_saved;
     }

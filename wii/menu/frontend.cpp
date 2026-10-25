@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "riftwii/storagepaths.hpp"
 #include "frontend.hpp"
 
 #include <dirent.h>
@@ -47,7 +48,7 @@ bool ensure_directory(const char* path, std::string& error) {
 }
 
 bool ReadRiivolutionConfig(const std::string& game_id, RiivolutionConfig& out) {
-    const std::string path = std::string(kPackageDir) + "/config/" + riivolution_config_name(game_id) + ".xml";
+    const std::string path = std::string(RIFTWII_PATH("riivolution")) + "/config/" + riivolution_config_name(game_id) + ".xml";
     std::string text;
     if (!ReadTextFile(path, text)) return false;
     if (parse_riivolution_config(text, out)) return true;
@@ -65,8 +66,8 @@ void WriteRiivolutionConfig(const FrontendState& state) {
     ReadRiivolutionConfig(state.game_id, existing);
     const std::string text = write_riivolution_config(merge_riivolution_config(state.model, existing));
     std::string error;
-    const std::string dir = std::string(kPackageDir) + "/config";
-    if (!ensure_directory(kPackageDir, error) || !ensure_directory(dir.c_str(), error)) {
+    const std::string dir = std::string(RIFTWII_PATH("riivolution")) + "/config";
+    if (!ensure_directory(RIFTWII_PATH("riivolution"), error) || !ensure_directory(dir.c_str(), error)) {
         logf("Riivolution config: %s\n", error.c_str());
         return;
     }
@@ -152,7 +153,7 @@ bool SelectDisc(FrontendState& state, std::string& error, void (*progress)(const
     state.game_revision = disc.revision;
     state.game_disc_number = disc.disc_number;
     state.disc_status = "Disc: " + state.game_id + "  " + state.disc_title;
-    state.choices_path = std::string(kChoicesDir) + "/" + state.game_id + ".txt";
+    state.choices_path = std::string(kChoicesDir()) + "/" + state.game_id + ".txt";
     // Keep the burned-disc warning when reopening the page without querying
     // d2x again. warning_shown was cleared, so it is still said before Play.
     if (disc.burned) {
@@ -192,7 +193,7 @@ bool SelectUsbGame(FrontendState& state, std::size_t index, std::string& error) 
     // The full warning names the slots and the d2x version; the status
     // line only carries the short form (the note is also in boot.log).
     if (!state.usb_catalog.cios_note.empty()) state.disc_status += "  [no cIOS: install d2x for USB boot]";
-    state.choices_path = std::string(kChoicesDir) + "/" + g.id + ".txt";
+    state.choices_path = std::string(kChoicesDir()) + "/" + g.id + ".txt";
     error.clear();
     return true;
 }
@@ -228,7 +229,7 @@ bool SelectSdGame(FrontendState& state, std::size_t index, std::string& error) {
         state.disc_status += "  [GameCube, made from " + g.gc_patch_source + " on first start]";
     else if (g.gamecube) state.disc_status += "  [GameCube]";
     else if (!state.sd_catalog.cios_note.empty()) state.disc_status += "  [no cIOS: install d2x for SD boot]";
-    state.choices_path=std::string(kChoicesDir)+"/"+g.id+".txt";
+    state.choices_path=std::string(kChoicesDir())+"/"+g.id+".txt";
     error.clear(); return true;
 }
 
@@ -255,7 +256,7 @@ bool SelectChannel(FrontendState& state, std::size_t index, std::string& error) 
     state.disc_status = "Wii: " + state.disc_title + "  (" + channel.game_id + ")";
     state.game_revision = 0;
     state.game_disc_number = 0;
-    state.choices_path = std::string(kChoicesDir) + "/" + channel.game_id + ".txt";
+    state.choices_path = std::string(kChoicesDir()) + "/" + channel.game_id + ".txt";
     error.clear();
     return true;
 }
@@ -330,7 +331,7 @@ std::string ScanPackages(FrontendState& state) {
         } else if (!state.profile_key.empty()) {
             // A profile whose file went missing starts from the game's own
             // choices, as a new one does.
-            if (ReadTextFile(std::string(kChoicesDir) + "/" + state.game_id + ".txt", text)) state.model.restore(text);
+            if (ReadTextFile(std::string(kChoicesDir()) + "/" + state.game_id + ".txt", text)) state.model.restore(text);
         } else if (!state.game_id.empty()) {
             // A game RiftWii has never saved: start from what Riivolution
             // last used for it.
@@ -394,7 +395,7 @@ std::string ModPlaceProblem(const FrontendState& state, bool brief) {
 }
 
 bool SaveChoicesTo(const LaunchModel& model, const std::string& path, std::string& error) {
-    if (!ensure_directory("sd:/riftwii", error) || !ensure_directory(kChoicesDir, error)) return false;
+    if (!ensure_directory(RIFTWII_PATH("riftwii"), error) || !ensure_directory(kChoicesDir(), error)) return false;
     // Written whole beside it, then put in its place (as settings.txt): a
     // power cut or a full card no longer leaves the game's choices empty.
     const std::string temp = path + ".part";
@@ -439,7 +440,7 @@ bool SaveChoices(const FrontendState& state, std::string& error) {
 void SelectProfile(FrontendState& state, const Profile& profile) {
     state.profile_key = profile.key();
     state.profile_name = profile.name;
-    state.choices_path = std::string(kChoicesDir) + "/" + state.profile_key + ".txt";
+    state.choices_path = std::string(kChoicesDir()) + "/" + state.profile_key + ".txt";
     logf("Home: %s opened as its tile \"%s\" (%s)\n", state.game_id.c_str(), profile.name.c_str(),
          state.choices_path.c_str());
 }

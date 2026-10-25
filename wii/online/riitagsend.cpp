@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: 2011 Dimok
 // SPDX-FileCopyrightText: USB Loader GX contributors <https://github.com/wiidev/usbloadergx>
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "riftwii/storagepaths.hpp"
 #include "riitagsend.hpp"
 
 #include <cstdio>
@@ -21,8 +22,7 @@ namespace {
 // Loader GX's (its default WiinnertagPath, in GX's own folder), so a tag
 // set up for GX works here as it is: on the SD card, then on the USB drive
 // (a tester's GX lives there).
-const char* const kTagFiles[] = {"sd:/riftwii/Wiinnertag.xml", "sd:/apps/usbloader_gx/Wiinnertag.xml",
-                                 "usb:/riftwii/Wiinnertag.xml", "usb:/apps/usbloader_gx/Wiinnertag.xml"};
+
 
 std::vector<std::string> g_urls;  // for Send, on the network's thread
 
@@ -61,6 +61,8 @@ void Send() {
 void TagGame(const std::string& game_id, bool background) {
     if (!Settings().online) return;
     std::vector<RiiTagEntry> entries;
+    const char* const kTagFiles[] = {RIFTWII_PATH("riftwii/Wiinnertag.xml"), "sd:/apps/usbloader_gx/Wiinnertag.xml",
+                                 "usb:/riftwii/Wiinnertag.xml", "usb:/apps/usbloader_gx/Wiinnertag.xml"};
     for (const char* path : kTagFiles) {
         std::string text;
         // The USB drive as libfat mounts it (FAT32), else as the menu reads

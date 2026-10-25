@@ -1161,14 +1161,14 @@ msgstr "(Journal : sd:/riftwii/session.log)"
 msgid "RiftWii needs an SD card"
 msgstr "RiftWii nécessite une carte SD"
 
-msgid "USB mode is not supported yet"
-msgstr "Le mode 100% USB n'est pas encore pris en charge"
+msgid "USB storage could not be mounted"
+msgstr "Impossible de monter le stockage USB"
 
 msgid "No SD card was found"
 msgstr "Aucune carte SD trouvée"
 
-msgid "RiftWii was started from a USB drive. It keeps its settings, logs and saves on the SD card, so for now it needs one to run. Copy the sd-card folder from the RiftWii zip to a FAT32 SD card, put the card in the Wii and start RiftWii from it."
-msgstr "RiftWii a été démarré depuis un stockage USB. Il nécessite une carte SD pour ses paramètres et sauvegardes. Copiez le dossier sd-card du fichier zip sur une carte SD au format FAT32 puis insérez-la."
+msgid "Use a FAT32 USB drive with apps/riftwii/boot.dol. Connect it to USB port 0, wait a few seconds, then try again. No SD card is required."
+msgstr "Utilisez un stockage USB FAT32 contenant apps/riftwii/boot.dol. Branchez-le au port USB 0, attendez quelques secondes et réessayez. Aucune carte SD nécessaire."
 
 msgid "RiftWii keeps its settings, logs and saves on the SD card and could not read one. Put a FAT32 SD card in the Wii with the sd-card folder from the RiftWii zip on it, then start RiftWii again."
 msgstr "Impossible de lire la carte SD contenant vos configurations et sauvegardes. Veuillez insérer une carte SD FAT32 munie du dossier sd-card extrait de l'archive zip."
@@ -3254,3 +3254,6 @@ msgstr "RiftWii ne peut pas laisser de note sur la carte SD ; si l'installateur 
 
 msgid "Open anyway"
 msgstr "Ouvrir quand même"
+
+msgid "No readable storage"
+msgstr "Aucun stockage lisible"

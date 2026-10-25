@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "riftwii/storagepaths.hpp"
 #include "codebuilds.hpp"
 
 #include <dirent.h>
@@ -21,7 +22,7 @@ namespace {
 
 constexpr std::size_t kMaxGctBytes = 1024 * 1024;   // far more than any build's code list has room for
 constexpr std::size_t kMaxBuilds = 32;
-constexpr const char* kPicksPath = "sd:/riftwii/codebuilds.txt";
+const char* kPicksPath() { return RIFTWII_PATH("riftwii/codebuilds.txt"); }
 
 bool read_file(const std::string& path, std::size_t limit, std::vector<std::uint8_t>& out) {
     out.clear();
@@ -127,7 +128,7 @@ void add_codes(const std::string& folder, std::vector<CodeBuildFile>& out, const
 // "RSBE01<tab>sd:/path/file.gct" lines.
 std::vector<std::pair<std::string, std::string>> read_picks() {
     std::vector<std::pair<std::string, std::string>> picks;
-    const std::string text = read_text(kPicksPath, 64 * 1024);
+    const std::string text = read_text(kPicksPath(), 64 * 1024);
     LineReader lines(text);
     std::string line;
     while (lines.next(line)) {
@@ -140,17 +141,17 @@ std::vector<std::pair<std::string, std::string>> read_picks() {
 }
 
 bool write_picks(const std::vector<std::pair<std::string, std::string>>& picks, std::string& error) {
-    mkdir("sd:/riftwii", 0777);
-    FILE* f = std::fopen(kPicksPath, "wb");
+    mkdir(RIFTWII_PATH("riftwii"), 0777);
+    FILE* f = std::fopen(kPicksPath(), "wb");
     if (!f) {
-        error = std::string("Cannot write ") + kPicksPath + ".";
+        error = std::string("Cannot write ") + kPicksPath() + ".";
         return false;
     }
     std::string text;
     for (const auto& p : picks) text += p.first + "\t" + p.second + "\n";
     const bool ok = std::fwrite(text.data(), 1, text.size(), f) == text.size();
     if (std::fclose(f) != 0 || !ok) {
-        error = std::string("Cannot write ") + kPicksPath + ".";
+        error = std::string("Cannot write ") + kPicksPath() + ".";
         return false;
     }
     return true;

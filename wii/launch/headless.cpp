@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "riftwii/storagepaths.hpp"
 #include "headless.hpp"
 #include "riitagsend.hpp"
 
@@ -22,8 +23,8 @@
 namespace riftwii::wii {
 namespace {
 
-constexpr const char* kLogPath = "sd:/riftwii/boot.log";
-constexpr const char* kLaunchFile = "sd:/riftwii/launch.txt";
+const char* kLogPath() { return RIFTWII_PATH("riftwii/boot.log"); }
+const char* kLaunchFile() { return RIFTWII_PATH("riftwii/launch.txt"); }
 // A GameCube game's switch to another program (runtime/gc's gc_on_boot_dol):
 // the GameCube loader makes it at every launch, "--idle--" and the image,
 // and the blob turns it into a launch when the game switches. One sector,
@@ -234,7 +235,7 @@ bool launch(const std::vector<std::string>& args, std::string& error) {
     }
     // The pack choices the menu launched the game with (a profile's file,
     // say); the game's own where the launch does not name one.
-    if (!h.choices.empty()) state.choices_path = std::string(kChoicesDir) + "/" + h.choices;
+    if (!h.choices.empty()) state.choices_path = std::string(kChoicesDir()) + "/" + h.choices;
     logf("  %s\n", state.disc_status.c_str());
     // A scan that ran out of memory stops part-way and keeps only the packs
     // read so far; launching with those would drop the player's mods
@@ -269,7 +270,7 @@ bool launch(const std::vector<std::string>& args, std::string& error) {
                    : RunBoot(true, error, source);
     });
     if (reload_terminal_failure()) halt_after_terminal_reload();
-    LogOpen(kLogPath, true);  // the boot closed it and remounted the card
+    LogOpen(kLogPath(), true);  // the boot closed it and remounted the card
     return booted;
 }
 
@@ -308,8 +309,8 @@ bool HeadlessArguments(std::vector<std::string>& args) {
     // without any) writes them to a file instead, one per line. It is
     // read once: deleted before the launch, so a failed one never repeats.
     args.clear();
-    if (read_launch_lines(kLaunchFile, args)) {
-        std::remove(kLaunchFile);
+    if (read_launch_lines(kLaunchFile(), args)) {
+        std::remove(kLaunchFile());
         return true;
     }
     // A GameCube game's switch to another program, taken up once: the file
@@ -327,7 +328,7 @@ bool HeadlessArguments(std::vector<std::string>& args) {
 }
 
 void RunHeadless(const std::vector<std::string>& args) {
-    LogOpen(kLogPath);
+    LogOpen(kLogPath());
     std::string line;
     for (const std::string& a : args) line += " " + a;
     logf("RiftWii %s: headless launch:%s\n", RIFTWII_VERSION, line.c_str());

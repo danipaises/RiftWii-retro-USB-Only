@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "riftwii/storagepaths.hpp"
 #include "cover3d.hpp"
 
 #include <ogc/cache.h>
@@ -25,7 +26,7 @@
 namespace riftwii::wii {
 namespace {
 
-constexpr const char* kDir = "sd:/riftwii/covers3d";
+const char* kDir() { return RIFTWII_PATH("riftwii/covers3d"); }
 constexpr std::time_t kRetryAfter = 7 * 24 * 60 * 60;
 // The view draws 13 at most (wii/menu/gui_shelf.cpp, kRingReach each side
 // of the focus): room for those and the next few either way, about 2 MB of
@@ -34,8 +35,8 @@ constexpr int kSlots = 22;
 // GameTDB's 3D covers are some 60 KB; a larger answer is not one.
 constexpr std::size_t kMaxPng = 1u << 20;
 
-std::string StorePath(const std::string& id) { return std::string(kDir) + "/" + id + ".rw3"; }
-std::string MissPath(const std::string& id) { return std::string(kDir) + "/" + id + ".none"; }
+std::string StorePath(const std::string& id) { return std::string(kDir()) + "/" + id + ".rw3"; }
+std::string MissPath(const std::string& id) { return std::string(kDir()) + "/" + id + ".none"; }
 
 bool ValidId(const std::string& id) {
     if (id.size() != 6) return false;
@@ -67,8 +68,8 @@ bool WriteAll(const std::string& path, const std::vector<std::uint8_t>& bytes) {
 
 CoverFetch FetchNow(const std::string& game_id, std::string& error) {
     if (!ValidId(game_id)) return CoverFetch::NotFound;
-    mkdir("sd:/riftwii", 0777);
-    mkdir(kDir, 0777);
+    mkdir(RIFTWII_PATH("riftwii"), 0777);
+    mkdir(kDir(), 0777);
     for (const std::string& region : cover_regions(game_id, MenuLanguage())) {
         std::vector<std::uint8_t> png;
         std::string why;

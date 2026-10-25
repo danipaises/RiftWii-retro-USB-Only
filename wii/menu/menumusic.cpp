@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "riftwii/storagepaths.hpp"
 #include "menumusic.hpp"
 
 #include <gccore.h>
@@ -31,7 +32,7 @@ constexpr int kFadeStepUs = 20000;
 // cut back in.
 constexpr int kFadeInSteps = 10;
 
-const char* const kMusicFiles[] = {"sd:/riftwii/music.ogg", "sd:/apps/riftwii/music.ogg"};
+
 
 u8* g_music = nullptr;
 long g_bytes = 0;
@@ -44,6 +45,7 @@ s32 g_resume_at_ms = -1;  // where the track was when a cIOS reload paused it
 // Reads the first music file there is into MEM2 (not the MEM1 heap,
 // which packs and scans need).
 void Load() {
+    const char* const kMusicFiles[] = {RIFTWII_PATH("riftwii/music.ogg"), RIFTWII_PATH("apps/riftwii/music.ogg")};
     if (g_tried) return;
     g_tried = true;
     // The theme's music.ogg first (docs/THEMES.md), then the card's, then RiftWii's.

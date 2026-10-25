@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "riftwii/storagepaths.hpp"
 #include "menuios.hpp"
 
 #include <fat.h>
@@ -22,7 +23,7 @@
 namespace riftwii::wii {
 namespace {
 
-constexpr const char* kSettingPath = "sd:/riftwii/menu_ios.txt";
+const char* kSettingPath() { return RIFTWII_PATH("riftwii/menu_ios.txt"); }
 constexpr int kFirstSlot = 248;
 constexpr int kLastSlot = 252;
 int g_menu_cios = 0;
@@ -44,7 +45,7 @@ std::uint16_t be16(const std::uint8_t* p) { return static_cast<std::uint16_t>((p
 }  // namespace
 
 int LoadMenuIos() {
-    FILE* f = std::fopen(kSettingPath, "r");
+    FILE* f = std::fopen(kSettingPath(), "r");
     if (!f) return 0;
     char text[16] = {};
     const std::size_t n = std::fread(text, 1, sizeof(text) - 1, f);
@@ -56,10 +57,10 @@ int LoadMenuIos() {
 
 bool SaveMenuIos(int slot) {
     if (slot == 0) {
-        std::remove(kSettingPath);
+        std::remove(kSettingPath());
         return true;
     }
-    FILE* f = std::fopen(kSettingPath, "w");
+    FILE* f = std::fopen(kSettingPath(), "w");
     if (!f) return false;
     const bool ok = std::fprintf(f, "%d\n", slot) > 0;
     return std::fclose(f) == 0 && ok;
@@ -83,6 +84,8 @@ bool LeaveSessionCios(bool sd_mounted, const char* why) {
     if (read32(0x0D800064) == 0xFFFFFFFF) keep_hardware_access("Menu IOS");
     if (sd_mounted) {
         LogClose();
+        UnmountPrimaryUsb();
+        release_usb_driver();
         fatUnmount("sd:");
         libogc_sd_stop();
     }
@@ -93,7 +96,7 @@ bool LeaveSessionCios(bool sd_mounted, const char* why) {
         r = reload_ios(58, error, true);
         if (r == ReloadResult::Terminal) halt_after_terminal_reload();
     }
-    if (sd_mounted && libogc_sd_start() && fatMountSimple("sd", sd_interface())) LogReopen();
+    if (sd_mounted && MountPrimaryForMenu()) LogReopen();
     if (IOS_GetVersion() != 58) {
         g_menu_cios = IOS_GetVersion() == g_menu_cios ? g_menu_cios : 0;
         logf("Menu IOS: still on IOS%d (%s)\n", IOS_GetVersion(), error.c_str());
@@ -112,7 +115,7 @@ int BurnedDiscSlot() {
 }
 
 bool StartMenuIos(bool sd_mounted, bool fresh, int session_slot, const char* session_why) {
-    int slot = sd_mounted ? LoadMenuIos() : 0;
+    int slot = !PrimaryOnUsb() && sd_mounted ? LoadMenuIos() : 0;
     if (slot != 0 && !slot_has_ticket(slot)) {
         logf("Menu IOS: IOS%d is not installed; staying on IOS%d\n", slot, IOS_GetVersion());
         slot = 0;
@@ -130,6 +133,8 @@ bool StartMenuIos(bool sd_mounted, bool fresh, int session_slot, const char* ses
         if (read32(0x0D800064) == 0xFFFFFFFF) keep_hardware_access("Menu IOS");
         if (sd_mounted) {
             LogClose();
+            UnmountPrimaryUsb();
+            release_usb_driver();
             fatUnmount("sd:");
             libogc_sd_stop();
         }
@@ -145,7 +150,7 @@ bool StartMenuIos(bool sd_mounted, bool fresh, int session_slot, const char* ses
             if (r == ReloadResult::Terminal) halt_after_terminal_reload();
         }
         g_menu_ios_lost = IOS_GetVersion() != 58 ? IOS_GetVersion() : 0;
-        if (sd_mounted && libogc_sd_start() && fatMountSimple("sd", sd_interface())) {
+        if (sd_mounted && MountPrimaryForMenu()) {
             LogReopen();
         }
         if (!first_error.empty()) logf("Menu IOS: the reload into IOS58 after a restart failed once (%s)\n", first_error.c_str());
@@ -156,12 +161,14 @@ bool StartMenuIos(bool sd_mounted, bool fresh, int session_slot, const char* ses
     const PadPairings before = ReadPadPairings();
     logf("Menu IOS: reloading into IOS%d (%s)\n", slot, DescribePadPairings(before).c_str());
     LogClose();
+    UnmountPrimaryUsb();
+    release_usb_driver();
     fatUnmount("sd:");
     libogc_sd_stop();
     std::string error;
     const ReloadResult r = reload_ios(slot, error, fresh);
     if (r == ReloadResult::Terminal) halt_after_terminal_reload();
-    const bool mounted = libogc_sd_start() && fatMountSimple("sd", sd_interface());
+    const bool mounted = MountPrimaryForMenu();
     if (mounted) LogReopen();
     if (r == ReloadResult::NotInstalled || r == ReloadResult::Failed) {
         logf("Menu IOS: reload into IOS%d failed (%s); staying on IOS%d\n", slot, error.c_str(), IOS_GetVersion());

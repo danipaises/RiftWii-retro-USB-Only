@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "riftwii/storagepaths.hpp"
 #include "banners.hpp"
 
 #include <gccore.h>
@@ -23,7 +24,7 @@
 namespace riftwii::wii {
 namespace {
 
-constexpr const char* kDir = "sd:/riftwii/banners";
+const char* kDir() { return RIFTWII_PATH("riftwii/banners"); }
 constexpr std::size_t kMaxBanner = 4u << 20;
 // A stored file this small is a GameCube disc's own banner (BNR2 is 8 KB),
 // not an animated one (hundreds of kilobytes): one to replace by download.
@@ -35,8 +36,8 @@ std::set<std::string> g_failed;
 // GameCube games whose download found nothing this session.
 std::set<std::string> g_downloadMissed;
 
-std::string PathOf(const std::string& id) { return std::string(kDir) + "/" + id + ".bnr"; }
-std::string MissPath(const std::string& id) { return std::string(kDir) + "/" + id + ".none"; }
+std::string PathOf(const std::string& id) { return std::string(kDir()) + "/" + id + ".bnr"; }
+std::string MissPath(const std::string& id) { return std::string(kDir()) + "/" + id + ".none"; }
 
 bool ValidId(const std::string& id) {
     if (id.size() != 6) return false;
@@ -48,8 +49,8 @@ bool ValidId(const std::string& id) {
 // Through a .part file, so a write cut short never leaves half a banner
 // that the menu would try to play; whatever was stored before is replaced.
 bool WriteBanner(const std::string& id, const std::vector<std::uint8_t>& bytes, std::string& error) {
-    mkdir("sd:/riftwii", 0777);
-    mkdir(kDir, 0777);
+    mkdir(RIFTWII_PATH("riftwii"), 0777);
+    mkdir(kDir(), 0777);
     const std::string path = PathOf(id), temp = path + ".part";
     FILE* f = std::fopen(temp.c_str(), "wb");
     const bool written = f && std::fwrite(bytes.data(), 1, bytes.size(), f) == bytes.size();
@@ -97,8 +98,8 @@ bool StoreBannerBytes(const std::string& id, std::vector<std::uint8_t>& bnr, boo
         logf("Banner of %s: %s\n", id.c_str(), error.c_str());
         return false;
     }
-    mkdir("sd:/riftwii", 0777);
-    mkdir(kDir, 0777);
+    mkdir(RIFTWII_PATH("riftwii"), 0777);
+    mkdir(kDir(), 0777);
     const std::string path = PathOf(id), temp = path + ".part";
     FILE* f = std::fopen(temp.c_str(), "wb");
     const bool ok = f && std::fwrite(bnr.data(), 1, bnr.size(), f) == bnr.size();
@@ -193,8 +194,8 @@ BannerFetch FetchGameCubeBanner(const std::string& game_id, bool regional_fallba
     if (answer == BannerDownload::Failed) return BannerFetch::Failed;
     if (answer == BannerDownload::None) {
         // An empty stamp: not asked again for a week.
-        mkdir("sd:/riftwii", 0777);
-        mkdir(kDir, 0777);
+        mkdir(RIFTWII_PATH("riftwii"), 0777);
+        mkdir(kDir(), 0777);
         if (FILE* f = std::fopen(MissPath(game_id).c_str(), "wb")) std::fclose(f);
         logf("Banners: the banner server has no animated banner for %s (%s); the disc's picture stays\n",
              game_id.c_str(), error.c_str());

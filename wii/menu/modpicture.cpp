@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "riftwii/storagepaths.hpp"
 #include "modpicture.hpp"
 
 #include <gccore.h>
@@ -122,7 +123,7 @@ const u8* ProfilePicture(const std::string& key, const std::string& art) {
         if (s.used < victim->used) victim = &s;
     }
     // The player's own picture first, then the pack's.
-    std::string path = std::string(kProfilePictureDir) + "/" + key + ".png";
+    std::string path = std::string(kProfilePictureDir()) + "/" + key + ".png";
     if (!exists(path)) path = art;
     if (path.empty() || !exists(path)) {
         g_profileNone.insert(key);

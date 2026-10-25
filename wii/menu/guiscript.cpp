@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "riftwii/storagepaths.hpp"
 #include "guiscript.hpp"
 #include "transition.hpp"
 
@@ -177,11 +178,11 @@ void Advance(const void* xfb, int width, int height) {
 bool GuiScriptFailLaunch() { return g_fail_launch; }
 
 void GuiScriptLaunchShot(int percent, const void* xfb, int width, int height) {
-    if (g_launch_shots) Shot("sd:/riftwii/launch_" + std::to_string(percent) + ".bmp", xfb, width, height);
+    if (g_launch_shots) Shot(RIFTWII_PATH("riftwii/launch_") + std::to_string(percent) + ".bmp", xfb, width, height);
 }
 
 void GuiScriptCrashShot(const void* xfb, int width, int height) {
-    if (!g_lines.empty()) Shot("sd:/riftwii/crashscreen.bmp", xfb, width, height);
+    if (!g_lines.empty()) Shot(RIFTWII_PATH("riftwii/crashscreen.bmp"), xfb, width, height);
 }
 
 bool GuiScriptLoad(const char* path) {

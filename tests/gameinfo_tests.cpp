@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "gameinfo.hpp"
+#include "riftwii/storagepaths.hpp"
 #include "loadersettings.hpp"
 #include "log.hpp"
 #include "online.hpp"
@@ -31,8 +32,8 @@ namespace fs = std::filesystem;
 using namespace riftwii;
 using namespace riftwii::wii;
 
-constexpr const char* kCachePath = "sd:/riftwii/gameinfo-EN.txt";
-constexpr const char* kZipPath = "sd:/riftwii/wiitdb-EN.zip";
+const char* kCachePath() { return RIFTWII_PATH("riftwii/gameinfo-EN.txt"); }
+const char* kZipPath() { return RIFTWII_PATH("riftwii/wiitdb-EN.zip"); }
 
 void Write(const char* path, const char* data, std::size_t size) {
     std::ofstream file(path, std::ios::binary | std::ios::trunc);
@@ -42,18 +43,18 @@ void Write(const char* path, const char* data, std::size_t size) {
 }
 
 std::string ReadCache() {
-    std::ifstream file(kCachePath, std::ios::binary);
+    std::ifstream file(kCachePath(), std::ios::binary);
     CHECK(file.good());
     return std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
 }
 
 void ExpectFailedScanPreservesCache(const std::vector<std::uint8_t>& bytes, const GameInfo& later,
                                    const std::string& original_cache, bool expect_progress) {
-    Write(kZipPath, reinterpret_cast<const char*>(bytes.data()), bytes.size());
+    Write(kZipPath(), reinterpret_cast<const char*>(bytes.data()), bytes.size());
     std::string source;
     std::time_t source_time = 0;
     CHECK(GameInfoSource(source, source_time));
-    CHECK(source == kZipPath);
+    CHECK(source == kZipPath());
 
     GameInfo out;
     std::string error;
@@ -70,19 +71,19 @@ void ExpectFailedScanPreservesCache(const std::vector<std::uint8_t>& bytes, cons
     CHECK(serialize_game_infos({{cached.id, cached}}) == original_cache);
     CHECK(!PeekGameInfo("RMCE01", out));
     CHECK(ReadCache() == original_cache);
-    CHECK(!fs::exists(std::string(kCachePath) + ".part"));
+    CHECK(!fs::exists(std::string(kCachePath()) + ".part"));
 }
 
 void TestStoredTruncationPreservesCache() {
-    fs::create_directories("sd:/riftwii");
+    fs::create_directories(RIFTWII_PATH("riftwii"));
     GameInfo later;
     later.id = "RSBE01";
     later.developer = "Cached developer";
     later.synopsis = "Keep these details after an incomplete scan.";
     const std::string original_cache = serialize_game_infos({{later.id, later}});
-    Write(kCachePath, original_cache.data(), original_cache.size());
+    Write(kCachePath(), original_cache.data(), original_cache.size());
     // Force a refresh without a sleep or dependence on timestamp resolution.
-    fs::last_write_time(kCachePath, fs::file_time_type::clock::now() - std::chrono::hours(24));
+    fs::last_write_time(kCachePath(), fs::file_time_type::clock::now() - std::chrono::hours(24));
     GameInfo cached;
     CHECK(PeekGameInfo(later.id, cached));
     CHECK(serialize_game_infos({{cached.id, cached}}) == original_cache);
@@ -111,21 +112,22 @@ void TestStoredTruncationPreservesCache() {
     // Control: the same database intact finds the early game, so the
     // failed scans above did see it and still published nothing.
     const auto intact = ziptest::make_zip({{"wiitdb.xml", partial_xml, 0}});
-    Write(kZipPath, reinterpret_cast<const char*>(intact.data()), intact.size());
+    Write(kZipPath(), reinterpret_cast<const char*>(intact.data()), intact.size());
     GameInfo found;
     std::string error;
     CHECK(FindGameInfo("RMCE01", {"RMCE01"}, found, error, [](double) { return true; }) ==
           GameInfoResult::Found);
     CHECK(found.developer == "Partial result");
 
-    fs::remove(kZipPath);
-    fs::remove(kCachePath);
-    fs::remove("sd:/riftwii");
-    fs::remove("sd:");
+    fs::remove(kZipPath());
+    fs::remove(kCachePath());
+    fs::remove(RIFTWII_PATH("riftwii"));
+    fs::remove(riftwii::wii::PrimaryOnUsb() ? "usb:" : "sd:");
 }
 }  // namespace
 
-int main() {
+int main(int argc, char**) {
+    if (argc > 1) riftwii::wii::SelectPrimaryStorage(riftwii::PrimaryDevice::Usb);
     TestStoredTruncationPreservesCache();
     return failures ? 1 : 0;
 }

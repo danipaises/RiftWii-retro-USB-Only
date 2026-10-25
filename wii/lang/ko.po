@@ -1161,14 +1161,14 @@ msgstr "(로그: sd:/riftwii/session.log)"
 msgid "RiftWii needs an SD card"
 msgstr "RiftWii에는 SD 카드 필요"
 
-msgid "USB mode is not supported yet"
-msgstr "USB 모드는 아직 미지원"
+msgid "USB storage could not be mounted"
+msgstr "USB 저장 장치를 연결할 수 없습니다"
 
 msgid "No SD card was found"
 msgstr "SD 카드를 찾을 수 없음"
 
-msgid "RiftWii was started from a USB drive. It keeps its settings, logs and saves on the SD card, so for now it needs one to run. Copy the sd-card folder from the RiftWii zip to a FAT32 SD card, put the card in the Wii and start RiftWii from it."
-msgstr "RiftWii는 USB 드라이브에서 실행됩니다. 설정, 로그, 저장 데이터는 SD 카드에 기록되므로 현재 실행을 위해서는 SD 카드가 필요합니다. RiftWii 압축 파일에 포함된 'sd-card' 폴더를 FAT32 형식의 SD 카드에 복사한 뒤, 해당 카드를 Wii에 연결하고 RiftWii를 실행하세요."
+msgid "Use a FAT32 USB drive with apps/riftwii/boot.dol. Connect it to USB port 0, wait a few seconds, then try again. No SD card is required."
+msgstr "apps/riftwii/boot.dol 파일이 있는 FAT32 USB를 사용하세요. USB 포트 0에 연결하고 몇 초 후 다시 시도하세요. SD 카드는 필요하지 않습니다."
 
 msgid "RiftWii keeps its settings, logs and saves on the SD card and could not read one. Put a FAT32 SD card in the Wii with the sd-card folder from the RiftWii zip on it, then start RiftWii again."
 msgstr "RiftWii는 설정, 로그, 세이브 파일을 SD 카드에 저장하는데, 현재 SD 카드를 읽을 수 없는 상태입니다. RiftWii 압축 파일에 포함된 'sd-card' 폴더를 FAT32 형식의 SD 카드에 담아 Wii에 삽입한 후, RiftWii를 다시 실행해 보세요."
@@ -3254,3 +3254,6 @@ msgstr "RiftWii가 SD 카드에 기록을 남길 수 없어 설치 프로그램�
 
 msgid "Open anyway"
 msgstr "그래도 열기"
+
+msgid "No readable storage"
+msgstr "저장 장치를 읽을 수 없습니다"

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "restart.hpp"
+#include "riftwii/storagepaths.hpp"
 
 #include <fat.h>
 #include <gccore.h>
@@ -133,7 +134,10 @@ bool WarmRestart(RestartKind kind, const std::string& message, bool unmount) {
     CoverLoaderHold();
     logf("Restarting RiftWii\n");
     LogClose();
-    if (unmount) fatUnmount("sd:");
+    if (unmount) {
+        UnmountPrimaryUsb();
+        fatUnmount("sd:");
+    }
     AUDIO_StopDMA();
     SYS_ResetSystem(SYS_SHUTDOWN, 0, 0);
     u32 level;

@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "riftwii/storagepaths.hpp"
 #include "i18n.hpp"
 
 #include <vector>
@@ -45,7 +46,7 @@ void SetMenuLanguage(const std::string& lang) {
         if (lang == b) built_in = parse_po(Unpack(b), g_catalog);
     }
     std::size_t from_card = 0;
-    const std::string path = "sd:/riftwii/lang/" + lang + ".po";
+    const std::string path = RIFTWII_PATH("riftwii/lang/") + lang + ".po";
     std::string text;
     if (ReadTextFile(path, text)) from_card = parse_po(text, g_catalog);
     logf("Language: %s, %u built-in and %u from the card\n", lang.c_str(), static_cast<unsigned>(built_in),

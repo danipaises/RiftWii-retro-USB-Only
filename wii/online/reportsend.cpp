@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "riftwii/storagepaths.hpp"
 #include "reportsend.hpp"
 
 #include <dirent.h>
@@ -46,13 +47,13 @@
 namespace riftwii::wii {
 namespace {
 
-constexpr const char* kSessionLog = "sd:/riftwii/session.log";
-constexpr const char* kPreviousLog = "sd:/riftwii/session-previous.log";
-constexpr const char* kCrashFile = "sd:/riftwii/crash.txt";
-constexpr const char* kStateFile = "sd:/riftwii/report-state.txt";
-constexpr const char* kGameCrashFile = "sd:/riftwii/gamecrash.txt";
+const char* kSessionLog() { return RIFTWII_PATH("riftwii/session.log"); }
+const char* kPreviousLog() { return RIFTWII_PATH("riftwii/session-previous.log"); }
+const char* kCrashFile() { return RIFTWII_PATH("riftwii/crash.txt"); }
+const char* kStateFile() { return RIFTWII_PATH("riftwii/report-state.txt"); }
+const char* kGameCrashFile() { return RIFTWII_PATH("riftwii/gamecrash.txt"); }
 constexpr const char* kGameCrashRecord = "/shared2/riftwii/crash.bin";  // runtime/rtfault.h
-constexpr const char* kWpadLogFile = "sd:/riftwii/wpadlog.txt";
+const char* kWpadLogFile() { return RIFTWII_PATH("riftwii/wpadlog.txt"); }
 constexpr const char* kWpadLogRecord = "/shared2/riftwii/wpadlog.bin";  // runtime/rtwlog.h
 constexpr const char* kPasteUrl = "https://paste.rs/";
 // When paste.rs cannot be reached (some networks block it) or fails:
@@ -86,27 +87,27 @@ ReportPart file_part(const std::string& path) {
     part.name = path;
     part.found = read_text(path, part.text);
     // The player's RiiTag key never goes into a report: it is posted publicly.
-    if (part.found && path == "sd:/riftwii/settings.txt") part.text = hide_settings_secrets(part.text);
+    if (part.found && path == RIFTWII_PATH("riftwii/settings.txt")) part.text = hide_settings_secrets(part.text);
     return part;
 }
 
 // crash.txt's time and size, "" when there is none.
 std::string crash_stamp() {
     struct stat st;
-    if (stat(kCrashFile, &st) != 0) return "";
+    if (stat(kCrashFile(), &st) != 0) return "";
     return std::to_string(static_cast<long long>(st.st_mtime)) + " " + std::to_string(static_cast<long long>(st.st_size));
 }
 
 std::string asked_stamp(bool& known) {
     std::string text;
-    known = read_text(kStateFile, text);
+    known = read_text(kStateFile(), text);
     const std::size_t at = text.find("crash ");
     if (at == std::string::npos) return "";
     return text.substr(at + 6, text.find('\n', at) - at - 6);
 }
 
 void save_asked(const std::string& stamp) {
-    if (FILE* f = std::fopen(kStateFile, "wb")) {
+    if (FILE* f = std::fopen(kStateFile(), "wb")) {
         std::fprintf(f, "crash %s\n", stamp.c_str());
         std::fclose(f);
     }
@@ -232,7 +233,7 @@ void add_packs(const std::string& choices, std::vector<ReportPart>& parts) {
 }
 
 void add_gc_remotes(std::vector<ReportPart>& parts) {
-    for (const char* path : {"sd:/riftwii/gc/trace.bin", "sd:/riftwii/gc/trace-crash.bin"}) {
+    for (const char* path : {RIFTWII_PATH("riftwii/gc/trace.bin"), RIFTWII_PATH("riftwii/gc/trace-crash.bin")}) {
         std::string raw;
         if (!read_text(path, raw)) continue;  // at most kReadCap; a trace is 128 KB
         const std::vector<std::uint8_t> trace(raw.begin(), raw.end());
@@ -249,25 +250,25 @@ void add_gc_remotes(std::vector<ReportPart>& parts) {
 bool gather(const std::string& reason, std::size_t limit, std::string& report) {
     OutOfMemoryScope out_of_memory;
     std::vector<ReportPart> parts;
-    parts.push_back(file_part(kCrashFile));
-    parts.push_back(file_part(kGameCrashFile));
-    parts.push_back(file_part(kWpadLogFile));
-    const ReportPart boot = file_part("sd:/riftwii/boot.log");
+    parts.push_back(file_part(kCrashFile()));
+    parts.push_back(file_part(kGameCrashFile()));
+    parts.push_back(file_part(kWpadLogFile()));
+    const ReportPart boot = file_part(RIFTWII_PATH("riftwii/boot.log"));
     parts.push_back(boot);
     // Check each cIOS's results, early: a long report is cut at its end.
-    parts.push_back(file_part("sd:/riftwii/usbcheck.txt"));
-    ReportPart previous = file_part(kPreviousLog);
-    if (!previous.found) previous = file_part(std::string(kPreviousLog) + ".backup");
+    parts.push_back(file_part(RIFTWII_PATH("riftwii/usbcheck.txt")));
+    ReportPart previous = file_part(kPreviousLog());
+    if (!previous.found) previous = file_part(std::string(kPreviousLog()) + ".backup");
     parts.push_back(previous);
     // The open session log is closed while it is read.
     LogClose();
-    parts.push_back(file_part(kSessionLog));
+    parts.push_back(file_part(kSessionLog()));
     LogReopen();
-    parts.push_back(file_part("sd:/riftwii/cardlog.txt"));
-    parts.push_back(file_part("sd:/riftwii/settings.txt"));
-    parts.push_back(file_part("sd:/riftwii/menu_ios.txt"));
-    parts.push_back(file_part("sd:/riftwii/update.txt"));
-    parts.push_back(file_part("sd:/riftwii/channel.log"));
+    parts.push_back(file_part(RIFTWII_PATH("riftwii/cardlog.txt")));
+    parts.push_back(file_part(RIFTWII_PATH("riftwii/settings.txt")));
+    parts.push_back(file_part(RIFTWII_PATH("riftwii/menu_ios.txt")));
+    parts.push_back(file_part(RIFTWII_PATH("riftwii/update.txt")));
+    parts.push_back(file_part(RIFTWII_PATH("riftwii/channel.log")));
     // The game and packs of the last launch.
     const std::string id = launched_game_id(boot.text);
     if (!id.empty()) {
@@ -275,10 +276,10 @@ bool gather(const std::string& reason, std::size_t limit, std::string& report) {
         // choices (riftwii/profiles.hpp), its mods and cheats among them.
         const ReportPart lastTile = file_part(riftwii::kLastTilePath);
         const std::string tile = riftwii::launched_choices_key(id, lastTile.found ? lastTile.text : "");
-        ReportPart choices = file_part("sd:/riftwii/choices/" + tile + ".txt");
+        ReportPart choices = file_part(RIFTWII_PATH("riftwii/choices/") + tile + ".txt");
         parts.push_back(choices);
         // The border note is the game's, whichever tile ran it.
-        parts.push_back(file_part("sd:/riftwii/choices/" + id + ".video"));
+        parts.push_back(file_part(RIFTWII_PATH("riftwii/choices/") + id + ".video"));
         // The cheats picked, as the cheat file has them (a tester's own
         // code that did nothing could not be seen before).
         const ReportPart cheats = file_part(CheatPath(id));
@@ -290,7 +291,7 @@ bool gather(const std::string& reason, std::size_t limit, std::string& report) {
     // report says why a remote did nothing even when the game did not crash.
     if (boot.text.find("GameCube (native): ") != std::string::npos) add_gc_remotes(parts);
     parts.push_back(listing("sd:/riivolution"));
-    parts.push_back(listing("sd:/riftwii"));
+    parts.push_back(listing(RIFTWII_PATH("riftwii")));
     std::size_t held = 0;
     for (const ReportPart& part : parts) held += part.text.size();
     if (out_of_memory.failed() || !have_room(2 * held + limit)) return false;
@@ -302,7 +303,7 @@ bool gather(const std::string& reason, std::size_t limit, std::string& report) {
 
 namespace {
 
-constexpr const char* kLogDir = "sd:/riftwii/logs";
+const char* kLogDir() { return RIFTWII_PATH("riftwii/logs"); }
 constexpr unsigned kKeptLogFolders = 10;
 
 std::string LogStamp(std::time_t when) {
@@ -391,11 +392,11 @@ struct LogFolder {
 
 void PruneLogFolders(const std::string& current) {
     std::vector<LogFolder> folders;
-    if (DIR* dir = opendir(kLogDir)) {
+    if (DIR* dir = opendir(kLogDir())) {
         while (const dirent* entry = readdir(dir)) {
             const std::string name = entry->d_name;
             if (!LogFolderName(name) && name.rfind("undated", 0) != 0) continue;
-            const std::string path = std::string(kLogDir) + "/" + name;
+            const std::string path = std::string(kLogDir()) + "/" + name;
             struct stat st;
             folders.push_back({name, stat(path.c_str(), &st) == 0 ? st.st_mtime : 0});
         }
@@ -405,7 +406,7 @@ void PruneLogFolders(const std::string& current) {
         return a.when != b.when ? a.when < b.when : a.name < b.name;
     });
     for (std::size_t i = 0; i < folders.size() && folders.size() > kKeptLogFolders;) {
-        const std::string path = std::string(kLogDir) + "/" + folders[i].name;
+        const std::string path = std::string(kLogDir()) + "/" + folders[i].name;
         if (path == current) {
             ++i;
             continue;
@@ -417,7 +418,7 @@ void PruneLogFolders(const std::string& current) {
 
 // mkdir reserves the name rather than reusing a folder after a stat check.
 std::string NewLogFolder(const std::string& stamp) {
-    const std::string base = std::string(kLogDir) + "/" + (stamp.empty() ? "undated" : stamp);
+    const std::string base = std::string(kLogDir()) + "/" + (stamp.empty() ? "undated" : stamp);
     const unsigned first = stamp.empty() ? 1 : 0;
     for (unsigned n = first; n < 1000; ++n) {
         const std::string path = base + (n == 0 ? "" : "-" + std::to_string(n));
@@ -441,7 +442,7 @@ void CopyNewDiagnostic(const char* source, const std::string& folder, const char
         fingerprint.push_back(hex[byte >> 4]);
         fingerprint.push_back(hex[byte & 15]);
     }
-    const std::string marker = std::string(kLogDir) + "/" + name + ".last";
+    const std::string marker = std::string(kLogDir()) + "/" + name + ".last";
     std::string previous;
     if (read_text(marker, previous) && previous == fingerprint) return;
     if (!CopyFile(source, folder + "/" + name)) return;
@@ -459,29 +460,29 @@ void CopyNewDiagnostic(const char* source, const std::string& folder, const char
 
 bool RotateSessionLog() {
     // A power loss between the two FAT renames still leaves report input.
-    const std::string backup = std::string(kPreviousLog) + ".backup";
+    const std::string backup = std::string(kPreviousLog()) + ".backup";
     struct stat previous;
-    if (stat(kPreviousLog, &previous) != 0 && errno == ENOENT)
-        std::rename(backup.c_str(), kPreviousLog);
+    if (stat(kPreviousLog(), &previous) != 0 && errno == ENOENT)
+        std::rename(backup.c_str(), kPreviousLog());
     struct stat st;
-    if (stat(kSessionLog, &st) != 0) return errno == ENOENT;
-    mkdir("sd:/riftwii", 0777);
-    if (mkdir(kLogDir, 0777) != 0 && errno != EEXIST) return false;
+    if (stat(kSessionLog(), &st) != 0) return errno == ENOENT;
+    mkdir(RIFTWII_PATH("riftwii"), 0777);
+    if (mkdir(kLogDir(), 0777) != 0 && errno != EEXIST) return false;
     const std::string folder = NewLogFolder(LogStamp(st.st_mtime));
     if (folder.empty()) return false;
     const std::string archived = folder + "/session.log";
-    if (!MoveFile(kSessionLog, archived)) {
+    if (!MoveFile(kSessionLog(), archived)) {
         logf("The session log could not be archived; startup will append to it.\n");
         return false;
     }
-    CopyFile("sd:/riftwii/boot.log", folder + "/boot.log");
-    CopyNewDiagnostic(kCrashFile, folder, "crash.txt");
-    CopyNewDiagnostic(kGameCrashFile, folder, "gamecrash.txt");
-    CopyNewDiagnostic(kWpadLogFile, folder, "wpadlog.txt");
+    CopyFile(RIFTWII_PATH("riftwii/boot.log"), folder + "/boot.log");
+    CopyNewDiagnostic(kCrashFile(), folder, "crash.txt");
+    CopyNewDiagnostic(kGameCrashFile(), folder, "gamecrash.txt");
+    CopyNewDiagnostic(kWpadLogFile(), folder, "wpadlog.txt");
     // Publish only a complete, synced copy. A failed copy or rename leaves
     // the existing report input intact; the new log is safe in its archive.
-    const std::string temp = std::string(kPreviousLog) + ".part";
-    if (!CopyFile(archived, temp) || !PublishFile(temp, kPreviousLog)) {
+    const std::string temp = std::string(kPreviousLog()) + ".part";
+    if (!CopyFile(archived, temp) || !PublishFile(temp, kPreviousLog())) {
         std::remove(temp.c_str());
         logf("The previous-session log could not be refreshed; its old copy and the new archive are kept.\n");
         return true;
@@ -535,14 +536,14 @@ std::string DescribeControllers() {
 // as trace-crash.bin once read so it is asked about once; the next launch
 // makes a new trace.bin. The game's ID from the launch's log.
 static bool import_gc_crash() {
-    static const char kTrace[] = "sd:/riftwii/gc/trace.bin";
-    static const char kKept[] = "sd:/riftwii/gc/trace-crash.bin";
+    const char* const kTrace = RIFTWII_PATH("riftwii/gc/trace.bin");
+    const char* const kKept = RIFTWII_PATH("riftwii/gc/trace-crash.bin");
     std::string raw;
     if (!read_text(kTrace, raw)) return false;
     const std::vector<std::uint8_t> trace(raw.begin(), raw.end());
     std::string id, text;
     std::string boot;
-    if (read_text("sd:/riftwii/boot.log", boot)) {
+    if (read_text(RIFTWII_PATH("riftwii/boot.log"), boot)) {
         // The loader's own line: "GameCube (native): GMSE04 (sd:/...)".
         static const char kLine[] = "GameCube (native): ";
         const std::size_t at = boot.find(kLine);
@@ -551,12 +552,12 @@ static bool import_gc_crash() {
     if (!describe_gc_crash(trace, id, text)) return false;
     std::remove(kKept);
     std::rename(kTrace, kKept);
-    if (FILE* f = std::fopen(kGameCrashFile, "wb")) {
+    if (FILE* f = std::fopen(kGameCrashFile(), "wb")) {
         std::fputs(text.c_str(), f);
         std::fclose(f);
     }
     g_game_crashed = true;
-    logf("Game crash: %s (from %s, saved as %s)\n", text.substr(0, text.find('\n')).c_str(), kTrace, kGameCrashFile);
+    logf("Game crash: %s (from %s, saved as %s)\n", text.substr(0, text.find('\n')).c_str(), kTrace, kGameCrashFile());
     std::size_t line = 0;
     while (line < text.size()) {
         const std::size_t end = text.find('\n', line);
@@ -586,13 +587,13 @@ void ImportGameCrash() {
         logf("Game crash: %s: %s; deleted\n", kGameCrashRecord, got < 0 ? "unreadable" : error.c_str());
         return;
     }
-    if (FILE* f = std::fopen(kGameCrashFile, "wb")) {
+    if (FILE* f = std::fopen(kGameCrashFile(), "wb")) {
         std::fputs(text.c_str(), f);
         std::fclose(f);
     }
     g_game_crashed = true;
     const std::string first = text.substr(0, text.find('\n'));
-    logf("Game crash: %s (saved as %s)\n", first.c_str(), kGameCrashFile);
+    logf("Game crash: %s (saved as %s)\n", first.c_str(), kGameCrashFile());
     // The whole record in the log too, so an older report still has it.
     std::size_t at = 0;
     while (at < text.size()) {
@@ -630,12 +631,12 @@ void ImportWpadLog() {
         logf("Wii Remote log: %s: %s; deleted\n", kWpadLogRecord, got < 0 ? "unreadable" : error.c_str());
         return;
     }
-    if (FILE* f = std::fopen(kWpadLogFile, "wb")) {
+    if (FILE* f = std::fopen(kWpadLogFile(), "wb")) {
         std::fputs(text.c_str(), f);
         std::fclose(f);
     }
     const std::string first = text.substr(0, text.find('\n'));
-    logf("%s (saved as %s for the next problem report)\n", first.c_str(), kWpadLogFile);
+    logf("%s (saved as %s for the next problem report)\n", first.c_str(), kWpadLogFile());
 }
 
 bool UnreportedCrash(std::string& what) {
@@ -679,7 +680,7 @@ ReportOutcome SendProblemReport(const std::string& reason) {
         return out;
     }
     out.bytes = report.size();
-    if (FILE* f = std::fopen(kReportPath, "wb")) {
+    if (FILE* f = std::fopen(kReportPath(), "wb")) {
         out.saved = std::fwrite(report.data(), 1, report.size(), f) == report.size();
         out.saved = std::fclose(f) == 0 && out.saved;
     }

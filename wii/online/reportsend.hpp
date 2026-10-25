@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include "riftwii/storagepaths.hpp"
+
 #include <string>
 
 // Problem reports (riftwii/problemreport.hpp) from the Wii: gathered from
@@ -11,7 +13,7 @@
 // Settings has "Send a problem report" for anything else.
 namespace riftwii::wii {
 
-constexpr const char* kReportPath = "sd:/riftwii/report.txt";
+inline const char* kReportPath() { return RIFTWII_PATH("riftwii/report.txt"); }
 
 // At startup, before session.log is opened again: the last run's log
 // becomes session-previous.log, so a restart does not lose it.

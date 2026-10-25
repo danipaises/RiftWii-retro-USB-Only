@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "riftwii/storagepaths.hpp"
 #include "usbprobe.hpp"
 
 #include <fat.h>
@@ -26,8 +27,8 @@
 namespace riftwii::wii {
 namespace {
 
-constexpr const char* kPortFile = "sd:/riftwii/usbcheck_port.txt";
-constexpr const char* kResultFile = "sd:/riftwii/usbcheck.txt";
+const char* kPortFile() { return RIFTWII_PATH("riftwii/usbcheck_port.txt"); }
+const char* kResultFile() { return RIFTWII_PATH("riftwii/usbcheck.txt"); }
 
 // The SD card and the log are let go around the reload, as StartMenuIos
 // does.
@@ -96,16 +97,16 @@ std::string FirstLine(const char* path) {
 }  // namespace
 
 void SaveUsbCheckPort(const char* port) {
-    mkdir("sd:/riftwii", 0777);
-    if (FILE* f = std::fopen(kPortFile, "wb")) {
+    mkdir(RIFTWII_PATH("riftwii"), 0777);
+    if (FILE* f = std::fopen(kPortFile(), "wb")) {
         std::fprintf(f, "%s\n", port);
         std::fclose(f);
     }
 }
 
 std::string RunUsbCheck(bool sd_mounted) {
-    const std::string port = sd_mounted ? FirstLine(kPortFile) : std::string();
-    std::remove(kPortFile);
+    const std::string port = sd_mounted ? FirstLine(kPortFile()) : std::string();
+    std::remove(kPortFile());
     std::string report = std::string("RiftWii USB check (") + RIFTWII_VERSION + "), " +
                          (is_wii_u() ? "Wii U" : "Wii") + ", adapter in a " +
                          (port.empty() ? std::string("port not given") : port + " port") + "\n";
@@ -136,7 +137,7 @@ std::string RunUsbCheck(bool sd_mounted) {
     }
     USB_Deinitialize();  // the menu's USB starts afresh
     if (sd_mounted) {
-        if (FILE* f = std::fopen(kResultFile, "wb")) {
+        if (FILE* f = std::fopen(kResultFile(), "wb")) {
             std::fputs(report.c_str(), f);
             std::fclose(f);
         }

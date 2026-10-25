@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "riftwii/storagepaths.hpp"
 #include "ghfallback.hpp"
 
 #include <dirent.h>
@@ -75,8 +76,8 @@ void GiveBack() {
     if (g_block.data && skin::Mem2Release(g_block.data, g_block.bytes)) g_block = Block{};
 }
 
-std::string IndexPath() { return std::string(kGameHackingDir) + "/index.txt"; }
-std::string ZipPath(const std::string& name) { return std::string(kGameHackingDir) + "/" + name; }
+std::string IndexPath() { return std::string(kGameHackingDir()) + "/index.txt"; }
+std::string ZipPath(const std::string& name) { return std::string(kGameHackingDir()) + "/" + name; }
 
 // "RiftWii/<version>": the site asks to be told who is asking.
 const char* UserAgent() {
@@ -158,7 +159,7 @@ bool CachedZipIsGood(const GameHackingIndex& index, Parts& parts) {
 // previous one, and any a power cut left between the zip's write and the
 // index's. Only names of exactly the zip format (no path in them) are touched.
 void RemoveOtherZips(const std::string& keep) {
-    DIR* dir = opendir(kGameHackingDir);
+    DIR* dir = opendir(kGameHackingDir());
     if (!dir) return;
     std::vector<std::string> doomed;
     while (const dirent* item = readdir(dir)) {
@@ -222,9 +223,9 @@ bool Refresh(GameHackingIndex& index, bool have_cache, std::string& error) {
     fresh.zip = name;
     fresh.fetched = now;
 
-    mkdir("sd:/riftwii", 0777);
-    mkdir("sd:/riftwii/cheats", 0777);
-    mkdir(kGameHackingDir, 0777);
+    mkdir(RIFTWII_PATH("riftwii"), 0777);
+    mkdir(RIFTWII_PATH("riftwii/cheats"), 0777);
+    mkdir(kGameHackingDir(), 0777);
     if (!WriteFileAtomic(ZipPath(name), zip, get.body_length, error)) return false;
     // The index follows the zip, so one that names a zip is never left without it.
     if (!WriteIndex(fresh, error)) return false;

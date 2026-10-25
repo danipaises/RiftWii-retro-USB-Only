@@ -1,4 +1,6 @@
 build-host/
+build-asan/
+__pycache__/
 build_wii/
 *.elf
 *.dol

@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "riftwii/storagepaths.hpp"
 #include "loadersettings.hpp"
 
 #include <ogc/conf.h>
@@ -13,7 +14,7 @@
 namespace riftwii::wii {
 namespace {
 
-constexpr const char* kPath = "sd:/riftwii/settings.txt";
+const char* kPath() { return RIFTWII_PATH("riftwii/settings.txt"); }
 bool g_loaded = false;
 LoaderSettings g_settings;
 
@@ -24,7 +25,7 @@ LoaderSettings& Settings() {
         g_loaded = true;
         std::string text;
         // A save cut off between its two steps leaves only the new copy.
-        if (ReadTextFile(kPath, text) || ReadTextFile(std::string(kPath) + ".part", text)) g_settings.parse(text);
+        if (ReadTextFile(kPath(), text) || ReadTextFile(std::string(kPath()) + ".part", text)) g_settings.parse(text);
     }
     return g_settings;
 }
@@ -33,22 +34,22 @@ void ReloadSettings() {
     g_settings = LoaderSettings{};
     g_loaded = true;
     std::string text;
-    if (ReadTextFile(kPath, text) || ReadTextFile(std::string(kPath) + ".part", text)) g_settings.parse(text);
+    if (ReadTextFile(kPath(), text) || ReadTextFile(std::string(kPath()) + ".part", text)) g_settings.parse(text);
 }
 
 // Written whole beside it, then put in its place: truncating it first left
 // it empty after a power cut or a full card, and every setting reset.
 bool SaveSettings() {
-    mkdir("sd:/riftwii", 0777);
-    const std::string temp = std::string(kPath) + ".part";
+    mkdir(RIFTWII_PATH("riftwii"), 0777);
+    const std::string temp = std::string(kPath()) + ".part";
     FILE* f = std::fopen(temp.c_str(), "wb");
     if (!f) return false;
     const std::string text = Settings().serialize();
     bool ok = std::fwrite(text.data(), 1, text.size(), f) == text.size();
     ok = std::fclose(f) == 0 && ok;
     if (ok) {
-        std::remove(kPath);
-        ok = std::rename(temp.c_str(), kPath) == 0;
+        std::remove(kPath());
+        ok = std::rename(temp.c_str(), kPath()) == 0;
     }
     if (!ok) std::remove(temp.c_str());
     return ok;

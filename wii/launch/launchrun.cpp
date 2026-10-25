@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-FileCopyrightText: USB Loader GX contributors <https://github.com/wiidev/usbloadergx>
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "riftwii/storagepaths.hpp"
 #include "launchrun.hpp"
 #include "launchsession.hpp"
 #include "d2xsave.hpp"
@@ -252,8 +253,12 @@ static GcImage gc_image_of(const LaunchSource& source) {
 }
 
 bool RunBoot(bool allow_ios_fallback, std::string& error, const LaunchSource& source) {
+    if (PrimaryOnUsb() && source.game.gamecube && !libogc_sd_inserted()) {
+        error = "GameCube still needs an SD card for RiftWii's raw memory-card backend. USB-only GameCube is not implemented.";
+        return false;
+    }
     if (source.game.gamecube) return LaunchGcGame(gc_image_of(source), {}, error);
-    Session s(source, "sd:/riftwii/boot.log");
+    Session s(source, RIFTWII_PATH("riftwii/boot.log"));
     if (!s.ensure_probe(error)) return false;
     BootOptions options;
     options.allow_ios_fallback = allow_ios_fallback;
@@ -307,7 +312,7 @@ void LogCompileNotes(const CompiledMod& mod) {
 }
 
 bool CompileSelection(const std::vector<PackageChoices>& packages, CompiledMod& out, std::string& error, const LaunchSource& source) {
-    Session s(source, "sd:/riftwii/boot.log");
+    Session s(source, RIFTWII_PATH("riftwii/boot.log"));
     s.usb_packs = any_on_usb(packages);
     if (!s.ensure_layout(error)) return false;
     CompiledMod mod;
@@ -365,7 +370,11 @@ void KeepOwnSaves(const Session& s, bool xml_saves, BootOptions& options) {
 
 bool BootCompiled(CompiledMod&& mod, std::string& error, const LaunchSource& source,
                     const std::string& save_mode, const std::string& game_id) {
-    Session s(source, "sd:/riftwii/boot.log");
+    if (PrimaryOnUsb() && !libogc_sd_inserted() && (!mod.savegame_dir.empty() || save_mode != "nand")) {
+        error = "This save redirection still uses the physical SD reader. No save has been moved or replaced.";
+        return false;
+    }
+    Session s(source, RIFTWII_PATH("riftwii/boot.log"));
     std::string shared_nand;
     if (!FindSharedSaves(save_mode, game_id, shared_nand, error)) return false;
     SetOwnSaves(s, save_mode, game_id, shared_nand);
@@ -382,6 +391,10 @@ bool BootCompiled(CompiledMod&& mod, std::string& error, const LaunchSource& sou
     const SaveOverride saves = resolve_save_override(save_mode, mod.savegame_dir, game_id, shared_nand);
     const bool xml_saves = !mod.savegame_dir.empty();
     const std::string dir = xml_saves ? mod.savegame_dir : saves.dir;
+    if (PrimaryOnUsb() && !libogc_sd_inserted() && !dir.empty()) {
+        error = "This mod redirects saves through the physical SD reader, which is empty. Disable its separate-save option.";
+        return false;
+    }
     BootOptions options;
     options.allow_ios_fallback = true;
     options.preserve_current_ios = source.kind != LaunchSource::Kind::Disc || MenuCiosSlot() != 0;
@@ -404,6 +417,10 @@ bool BootCompiled(CompiledMod&& mod, std::string& error, const LaunchSource& sou
 
 bool RunLaunch(const std::vector<PackageChoices>& packages, std::string& error, const LaunchSource& source,
                const std::string& save_mode, const std::string& game_id) {
+    if (PrimaryOnUsb() && !libogc_sd_inserted() && (source.game.gamecube || save_mode != "nand")) {
+        error = "This GameCube or separate-save mode still needs the physical SD reader. Use a Wii WBFS/ISO with its normal save.";
+        return false;
+    }
     // A GameCube game: RiftWii's own loader, its packs served past the image.
     if (source.game.gamecube) return LaunchGcGame(gc_image_of(source), packages, error);
     {
@@ -424,7 +441,7 @@ bool RunLaunch(const std::vector<PackageChoices>& packages, std::string& error, 
             if (source.kind != LaunchSource::Kind::Disc) {
                 // The app reloads IOS itself (CTGP asks for IOS37), which
                 // would drop d2x and the game with it: d2x blocks that.
-                Session s(source, "sd:/riftwii/boot.log");
+                Session s(source, RIFTWII_PATH("riftwii/boot.log"));
                 s.block_ios_reload = true;
                 const bool probed = s.ensure_probe(error);
                 std::string ignored;
@@ -450,7 +467,7 @@ bool RunLaunch(const std::vector<PackageChoices>& packages, std::string& error, 
     }
     // Keep one session across activation, DI probing, package compilation and
     // boot. In particular, a USB fragment list must survive the cIOS reload.
-    Session s(source, "sd:/riftwii/boot.log");
+    Session s(source, RIFTWII_PATH("riftwii/boot.log"));
     s.usb_packs = any_on_usb(packages);
     std::string shared_nand;
     if (!FindSharedSaves(save_mode, game_id, shared_nand, error)) return false;
@@ -476,6 +493,10 @@ bool RunLaunch(const std::vector<PackageChoices>& packages, std::string& error, 
     const SaveOverride saves = resolve_save_override(save_mode, mod.savegame_dir, game_id, shared_nand);
     const bool xml_saves = !mod.savegame_dir.empty();
     const std::string dir = xml_saves ? mod.savegame_dir : saves.dir;
+    if (PrimaryOnUsb() && !libogc_sd_inserted() && !dir.empty()) {
+        error = "This mod redirects saves through the physical SD reader, which is empty. Disable its separate-save option.";
+        return false;
+    }
     BootOptions options; options.allow_ios_fallback=true;
     options.preserve_current_ios = source.kind != LaunchSource::Kind::Disc || MenuCiosSlot() != 0 || s.on_cios;
     options.install_resident=!mod.entries.empty() || !mod.mem.empty() || !mod.relocations.empty() || !dir.empty();

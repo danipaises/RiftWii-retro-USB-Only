@@ -26,6 +26,7 @@ constexpr s32 kUmsBase = ('U' << 24) | ('M' << 16) | ('S' << 8);
 constexpr s32 kInit = kUmsBase + 0x1;
 constexpr s32 kGetCapacity = kUmsBase + 0x2;
 constexpr s32 kReadSectors = kUmsBase + 0x3;
+constexpr s32 kWriteSectors = kUmsBase + 0x4;
 // Which of the Wii's two USB ports d2x drives (0 unless told; set before
 // the init, as USB Loader GX does). A d2x without it answers an error.
 constexpr s32 kSetPort = kUmsBase + 0x83;
@@ -378,7 +379,7 @@ bool Stuck() { return g_stuck; }
 std::uint32_t SectorBytes() { return g_sector_bytes; }
 
 bool Read(std::uint64_t sector, std::uint32_t count, std::uint8_t* out) {
-    if (g_fd < 0 || !g_bounce || sector > 0xFFFFFFFFull) return false;
+    if (g_fd < 0 || g_stuck || !g_bounce || sector > UINT32_MAX || count > UINT32_MAX - sector) return false;
     while (count > 0) {
         const std::uint32_t n = std::min(count, kBounceBytes / g_sector_bytes);
         g_args[0] = static_cast<std::uint32_t>(sector);
@@ -395,6 +396,32 @@ bool Read(std::uint64_t sector, std::uint32_t count, std::uint8_t* out) {
         DCInvalidateRange(g_bounce, n * g_sector_bytes);
         std::memcpy(out, g_bounce, n * g_sector_bytes);
         out += n * g_sector_bytes;
+        sector += n;
+        count -= n;
+    }
+    return true;
+}
+
+bool Write(std::uint64_t sector, std::uint32_t count, const std::uint8_t* data) {
+    if (g_fd < 0 || g_stuck || !g_bounce || g_sector_bytes != kFatSectorBytes ||
+        sector > UINT32_MAX || count > UINT32_MAX - sector) return false;
+    while (count > 0) {
+        const std::uint32_t n = std::min(count, kBounceBytes / g_sector_bytes);
+        g_args[0] = static_cast<std::uint32_t>(sector);
+        g_args[1] = n;
+        g_vec[0].data = &g_args[0];
+        g_vec[0].len = 4;
+        g_vec[1].data = &g_args[1];
+        g_vec[1].len = 4;
+        g_vec[2].data = g_bounce;
+        g_vec[2].len = n * g_sector_bytes;
+        std::memcpy(g_bounce, data, n * g_sector_bytes);
+        DCFlushRange(g_args, sizeof(g_args));
+        DCFlushRange(g_bounce, n * g_sector_bytes);
+        // d2x's EHCI UMS interface uses 2 input + 1 in/out vector for
+        // writes too, as RiftWii's existing virtual-SD backend does.
+        if (ioctlv_limited(kWriteSectors, 2, 1, g_vec, "write") < 0) return false;
+        data += n * g_sector_bytes;
         sector += n;
         count -= n;
     }

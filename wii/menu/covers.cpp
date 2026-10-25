@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "riftwii/storagepaths.hpp"
 #include "covers.hpp"
 
 #include <ogc/cache.h>
@@ -30,7 +31,7 @@
 namespace riftwii::wii {
 namespace {
 
-constexpr const char* kCoverDir = "sd:/riftwii/covers";
+const char* kCoverDir() { return RIFTWII_PATH("riftwii/covers"); }
 constexpr std::time_t kRetryAfter = 7 * 24 * 60 * 60;
 // Room for every game's cover (CoverReserve), up to this many: 7 MB of
 // MEM2, where 37 MB were free with 326 games. A bigger library shares it.
@@ -38,9 +39,9 @@ constexpr int kPoolMax = 400;
 // Before the grid says how many: four pages and the game page.
 constexpr int kPoolMin = 49;
 
-std::string CoverPath(const std::string& id) { return std::string(kCoverDir) + "/" + id + ".rwc"; }
+std::string CoverPath(const std::string& id) { return std::string(kCoverDir()) + "/" + id + ".rwc"; }
 // An empty file: GameTDB had no cover when it was written.
-std::string MissPath(const std::string& id) { return std::string(kCoverDir) + "/" + id + ".none"; }
+std::string MissPath(const std::string& id) { return std::string(kCoverDir()) + "/" + id + ".none"; }
 
 bool ValidId(const std::string& id) {
     if (id.size() != 6) return false;
@@ -343,8 +344,8 @@ CoverFetch FetchCover(const std::string& game_id, std::string& error) {
 namespace {
 CoverFetch FetchCoverNow(const std::string& game_id, std::string& error) {
     if (!ValidId(game_id)) return CoverFetch::NotFound;
-    mkdir("sd:/riftwii", 0777);
-    mkdir(kCoverDir, 0777);
+    mkdir(RIFTWII_PATH("riftwii"), 0777);
+    mkdir(kCoverDir(), 0777);
     for (const std::string& region : cover_regions(game_id, MenuLanguage())) {
         std::vector<std::uint8_t> png;
         std::string why;

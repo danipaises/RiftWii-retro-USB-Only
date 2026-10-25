@@ -1,0 +1,17 @@
+{
+  "upstream_url": "https://github.com/KakarottoCake/Riftwii",
+  "upstream_base": "21172fe07123e8facb2f488332f5c0b174989997",
+  "branch": "codex/usb-return-fix",
+  "commit": "bb84fb1a31a6f9e1eb1854c8e7f5e8cff77a243c",
+  "commit_short": "bb84fb1a",
+  "commits_since_base_tag": 699,
+  "version": "2610-699-usb-return",
+  "build_stamp": "2610-699-usb-return-gbb84fb1a",
+  "test_build": false,
+  "hardware_tested": false,
+  "created": "2026-10-25",
+  "usb_only_base_commit": "58d9ac5ad499aee289c14a7d5131d36ec168d057",
+  "snapshot_baseline_commit": "daa73b2448cf16224a6bf7a211967f85ddf31833",
+  "initial_usb_operation_reported_by_user": true,
+  "return_hardware_confirmed": false
+}

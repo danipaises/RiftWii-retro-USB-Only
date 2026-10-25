@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include "riftwii/storagepaths.hpp"
+
 #include <gctypes.h>
 
 #include <string>
@@ -35,7 +37,7 @@ std::string ModPicturePath(const LaunchPackage& p);
 // picture fitted whole in it; nullptr when there is none or it can't be
 // read. Read once and kept (the last page's worth); GUI thread, halted.
 constexpr int kProfilePicture = 64;
-constexpr const char* kProfilePictureDir = "sd:/riftwii/profiles";
+inline const char* kProfilePictureDir() { return RIFTWII_PATH("riftwii/profiles"); }
 const u8* ProfilePicture(const std::string& key, const std::string& art);
 // Reads the picture ahead of drawing (Home's loop, a page at a time): true
 // when it had to read the card this time, false when it was ready or there

@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "riftwii/storagepaths.hpp"
 #include "modtiles.hpp"
 
 #include <sys/stat.h>
@@ -21,8 +22,8 @@ bool g_profilesRead = false;
 
 // Written whole beside it, then put in its place, as settings.txt.
 bool SaveProfiles(std::string& error) {
-    mkdir("sd:/riftwii", 0777);
-    const std::string temp = std::string(kProfilesPath) + ".part";
+    mkdir(RIFTWII_PATH("riftwii"), 0777);
+    const std::string temp = std::string(kProfilesPath()) + ".part";
     FILE* f = std::fopen(temp.c_str(), "wb");
     bool ok = f != nullptr;
     if (f) {
@@ -31,13 +32,13 @@ bool SaveProfiles(std::string& error) {
         ok = std::fclose(f) == 0 && ok;
     }
     if (ok) {
-        std::remove(kProfilesPath);
-        ok = std::rename(temp.c_str(), kProfilesPath) == 0;
+        std::remove(kProfilesPath());
+        ok = std::rename(temp.c_str(), kProfilesPath()) == 0;
     }
     if (!ok) {
         std::remove(temp.c_str());
         error = tr("Could not save the tiles to the SD card.");
-        logf("Home tiles: cannot write %s\n", kProfilesPath);
+        logf("Home tiles: cannot write %s\n", kProfilesPath());
     }
     return ok;
 }
@@ -65,9 +66,9 @@ ProfileList& Profiles() {
     if (!g_profilesRead) {
         g_profilesRead = true;
         std::string text;
-        if (ReadTextFile(kProfilesPath, text, kMaxProfilesFile)) g_profiles.parse(text);
+        if (ReadTextFile(kProfilesPath(), text, kMaxProfilesFile)) g_profiles.parse(text);
         if (!g_profiles.all().empty())
-            logf("Home tiles: %u read from %s\n", static_cast<unsigned>(g_profiles.all().size()), kProfilesPath);
+            logf("Home tiles: %u read from %s\n", static_cast<unsigned>(g_profiles.all().size()), kProfilesPath());
     }
     return g_profiles;
 }
@@ -90,7 +91,7 @@ bool CreateProfile(const FrontendState& state, const std::string& name, std::str
         case ProfileList::AddResult::BadGame: error = tr("This game has no ID to keep its tile under."); return false;
     }
     // Its choices first: a tile in the list always has its own file.
-    const std::string path = std::string(kChoicesDir) + "/" + key + ".txt";
+    const std::string path = std::string(kChoicesDir()) + "/" + key + ".txt";
     std::string why;
     if (!SaveChoicesTo(state.model, path, why)) {
         logf("Home tiles: %s\n", why.c_str());
@@ -137,14 +138,14 @@ bool RemoveProfile(FrontendState& state, std::string& error) {
     std::remove(state.choices_path.c_str());
     // Its picture too, or a new tile of the same name (the same key) would
     // show it; the remove popup says so, as the player put it there.
-    std::remove((std::string(kProfilePictureDir) + "/" + key + ".png").c_str());
+    std::remove((std::string(kProfilePictureDir()) + "/" + key + ".png").c_str());
     if (Settings().favorites.erase(key) != 0) SaveSettings();
     ForgetPlays(key);
     ForgetProfilePictures();
     logf("Home tiles: %s removed\n", key.c_str());
     state.profile_key.clear();
     state.profile_name.clear();
-    state.choices_path = std::string(kChoicesDir) + "/" + state.game_id + ".txt";
+    state.choices_path = std::string(kChoicesDir()) + "/" + state.game_id + ".txt";
     return true;
 }
 

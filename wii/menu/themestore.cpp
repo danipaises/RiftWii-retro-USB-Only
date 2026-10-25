@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "riftwii/storagepaths.hpp"
 #include "themestore.hpp"
 
 #include <dirent.h>
@@ -33,8 +34,8 @@
 namespace riftwii::wii::themes {
 namespace {
 
-constexpr const char* kThemesDir = "sd:/riftwii/themes";
-constexpr const char* kRecordsPath = "sd:/riftwii/themes/.browser.txt";
+const char* kThemesDir() { return RIFTWII_PATH("riftwii/themes"); }
+const char* kRecordsPath() { return RIFTWII_PATH("riftwii/themes/.browser.txt"); }
 constexpr std::size_t kRecordsCap = 64u << 10;
 
 // How many previews are kept as textures at once, and how far from the
@@ -237,8 +238,8 @@ void MakeThumbnail(const u8* rgba, int w, int h, u8* out) {
 // ---- The card ----
 
 void MakeDirs() {
-    mkdir("sd:/riftwii", 0777);
-    mkdir(kThemesDir, 0777);
+    mkdir(RIFTWII_PATH("riftwii"), 0777);
+    mkdir(kThemesDir(), 0777);
 }
 
 bool IsDirectory(const std::string& path) {
@@ -267,13 +268,13 @@ bool RemoveTree(const std::string& path, int depth = 0) {
 }
 
 bool WriteRecords(const std::string& text) {
-    const std::string temp = std::string(kRecordsPath) + ".part";
+    const std::string temp = std::string(kRecordsPath()) + ".part";
     if (!WriteWholeFile(temp, text.data(), text.size())) {
         std::remove(temp.c_str());
         return false;
     }
-    std::remove(kRecordsPath);  // FAT's rename does not replace
-    if (std::rename(temp.c_str(), kRecordsPath) != 0) {
+    std::remove(kRecordsPath());  // FAT's rename does not replace
+    if (std::rename(temp.c_str(), kRecordsPath()) != 0) {
         std::remove(temp.c_str());
         return false;
     }
@@ -362,9 +363,9 @@ bool Cancelled(std::string& error) {
 // `zip` is the buffer the download is read into (headers and body).
 bool InstallTheme(const ThemeListing& theme, MemoryGet& get, std::string& error) {
     const std::string folder = theme.folder;
-    const std::string temp = std::string(kThemesDir) + "/." + folder + ".tmp";
-    const std::string old = std::string(kThemesDir) + "/." + folder + ".old";
-    const std::string final_path = std::string(kThemesDir) + "/" + folder;
+    const std::string temp = std::string(kThemesDir()) + "/." + folder + ".tmp";
+    const std::string old = std::string(kThemesDir()) + "/." + folder + ".old";
+    const std::string final_path = std::string(kThemesDir()) + "/" + folder;
 
     g_stage = Stage::Download;
     g_done = 0;
@@ -495,7 +496,7 @@ bool InstallTheme(const ThemeListing& theme, MemoryGet& get, std::string& error)
     }
     if (had) RemoveTree(old);
     std::string records;
-    ReadTextFile(kRecordsPath, records, kRecordsCap);
+    ReadTextFile(kRecordsPath(), records, kRecordsCap);
     if (!WriteRecords(theme_record_text(records, folder, theme.sha256)))
         logf("Themes: %s is installed, but sd:/riftwii/themes/.browser.txt could not be written; the browser will not know it as its own\n",
              folder.c_str());
@@ -518,7 +519,7 @@ void RunInstall() {
     get.tls_bytes = TlsStream::memory_needed();
     std::string error;
     const bool ok = InstallTheme(theme, get, error);
-    const std::string temp = std::string(kThemesDir) + "/." + theme.folder + ".tmp";
+    const std::string temp = std::string(kThemesDir()) + "/." + theme.folder + ".tmp";
     // Whatever went wrong, no half-unpacked folder is left.
     if (!ok) RemoveTree(temp);
     g_jobOk = ok;
@@ -759,8 +760,8 @@ bool PreviewFailed(std::size_t index) { return g_open && g_failed && index < g_c
 void RefreshInstalled() {
     g_records.clear();
     g_folders.clear();
-    ReadTextFile(kRecordsPath, g_records, kRecordsCap);
-    if (DIR* d = opendir(kThemesDir)) {
+    ReadTextFile(kRecordsPath(), g_records, kRecordsCap);
+    if (DIR* d = opendir(kThemesDir())) {
         while (const dirent* e = readdir(d)) {
             if (e->d_name[0] != '.') g_folders.insert(Lower(e->d_name));
         }
@@ -832,7 +833,7 @@ bool DeleteTheme(const std::string& folder, std::string& error) {
         return false;
     }
     std::string records;
-    ReadTextFile(kRecordsPath, records, kRecordsCap);
+    ReadTextFile(kRecordsPath(), records, kRecordsCap);
     std::string recorded;
     // Only what the browser installed: a theme the player made or copied
     // there is theirs to remove.
@@ -840,7 +841,7 @@ bool DeleteTheme(const std::string& folder, std::string& error) {
         error = "this theme was not installed from here, so RiftWii leaves it alone";
         return false;
     }
-    if (!RemoveTree(std::string(kThemesDir) + "/" + folder)) {
+    if (!RemoveTree(std::string(kThemesDir()) + "/" + folder)) {
         error = "the theme's folder could not be removed";
         logf("Themes: %s could not be removed from the card\n", folder.c_str());
         return false;

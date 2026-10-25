@@ -4,6 +4,9 @@
 // SPDX-FileCopyrightText: Michael Wiedenbauer, Dave Murphy, Hector Martin (libogc) <https://github.com/devkitPro/libogc>
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "ios_reload.hpp"
+#include "riftwii/storagepaths.hpp"
+#include "log.hpp"
+#include "usbcatalog.hpp"
 
 #include "covers.hpp"
 
@@ -32,10 +35,16 @@
 #include "nanduse.hpp"
 #include "padhook.hpp"
 
-extern "C" void udelay(int us);
-
 namespace riftwii::wii {
 namespace {
+
+// Busy-wait while the IOS reload has interrupts masked. Do not redeclare
+// libogc's udelay: libogc 3.2.1 now provides it inline with an unsigned
+// parameter; older libogc versions used a separate symbol.
+void reload_delay(unsigned microseconds) {
+    const u64 start = gettime();
+    while (diff_usec(start, gettime()) < microseconds) {}
+}
 
 char g_dolphin_path[] ATTRIBUTE_ALIGN(32) = "/dev/dolphin";
 tikview g_view ATTRIBUTE_ALIGN(32);
@@ -122,6 +131,11 @@ ReloadResult reload_ios(int version, std::string& error, bool force) {
     // screenshot import left one) went with heap damage on the next IOS.
     NetStop();
     GcAdapterStop();
+    // Flush through the old IOS, before forgetting its /dev/usb2 handle.
+    // A libfat mount must never retain a descriptor from a previous IOS.
+    LogClose();
+    UnmountPrimaryUsb();
+    release_usb_driver();
     ums::Forget();
     // d2x's SD device the same way (#270): a launch that failed on one
     // cIOS slot and was retried on the next read the card through the
@@ -193,7 +207,7 @@ ReloadResult reload_ios(int version, std::string& error, bool force) {
         if (started_ms >= kIosStartTimeoutMs) {
             return terminal_startup_failure(version, "did not start within 10 s", error);
         }
-        udelay(1000);
+        reload_delay(1000);
     }
     // libogc polls the IPC ack bit for up to 400 ms and then carries on
     // regardless; the bit is not always raised by the time the new kernel
@@ -205,7 +219,7 @@ ReloadResult reload_ios(int version, std::string& error, bool force) {
             ipc_ms = i;
             break;
         }
-        udelay(1000);
+        reload_delay(1000);
     }
     g_reload_detail = "IOS" + std::to_string(version) + " announced itself after " + std::to_string(started_ms) +
                       " ms; " + (ipc_ms >= 0 ? "IPC ready after " + std::to_string(ipc_ms) + " ms"

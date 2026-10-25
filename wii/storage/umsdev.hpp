@@ -45,6 +45,9 @@ std::uint32_t SectorBytes();
 // Raw sectors of SectorBytes() each into any buffer (through a MEM2
 // bounce buffer: d2x's USB driver reads into MEM2 only).
 bool Read(std::uint64_t sector, std::uint32_t count, std::uint8_t* out);
+// Same bounded, MEM2-buffered transfer as Read. Used only by libfat's
+// application volume after the reload; game images are never written.
+bool Write(std::uint64_t sector, std::uint32_t count, const std::uint8_t* data);
 // The drive's FAT32 or NTFS volume, read through Read (Open first).
 bool Volume(const ImageVolume*& out, std::string& error);
 // A whole file of the volume, by "usb:/..." path.

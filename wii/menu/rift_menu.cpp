@@ -114,6 +114,7 @@
 #include "gameinfo.hpp"
 #include "i18n.hpp"
 #include "loadersettings.hpp"
+#include "riftwii/storagepaths.hpp"
 #include "memorybudget.hpp"
 #include "log.hpp"
 #include "ios_reload.hpp"
@@ -3635,7 +3636,7 @@ static void ShowWhatsNew()
 // it), not on a card that was just set up (it had the tour).
 static void ShowWhatsNewOnce(bool newCard)
 {
-	static const char* const kMarker = "sd:/riftwii/whatsnew_seen.txt";
+	const char* const kMarker = RIFTWII_PATH("riftwii/whatsnew_seen.txt");
 	struct stat st;
 	if (stat("sd:/", &st) != 0) return;
 	std::string list;
@@ -3652,7 +3653,7 @@ static void ShowWhatsNewOnce(bool newCard)
 		logf("What's new: shown\n");
 		ShowWhatsNew();
 	}
-	mkdir("sd:/riftwii", 0777);
+	mkdir(RIFTWII_PATH("riftwii"), 0777);
 	if (FILE* f = std::fopen(kMarker, "w")) {
 		std::fprintf(f, "%u\n", key);
 		std::fclose(f);
@@ -3662,12 +3663,12 @@ static void ShowWhatsNewOnce(bool newCard)
 // True when the tour was shown now (a new card).
 static bool ShowTutorialOnce()
 {
-	static const char* const kMarker = "sd:/riftwii/tutorial_done.txt";
+	const char* const kMarker = RIFTWII_PATH("riftwii/tutorial_done.txt");
 	struct stat st;
 	// Without a card nothing could remember it: it would show every start.
 	if (stat("sd:/", &st) != 0 || stat(kMarker, &st) == 0) return false;
-	const bool used = stat("sd:/riftwii/settings.txt", &st) == 0 || stat("sd:/riftwii/history.txt", &st) == 0 ||
-			  stat("sd:/riftwii/covers", &st) == 0 || stat("sd:/riftwii/channel_offered.txt", &st) == 0;
+	const bool used = stat(RIFTWII_PATH("riftwii/settings.txt"), &st) == 0 || stat(RIFTWII_PATH("riftwii/history.txt"), &st) == 0 ||
+			  stat(RIFTWII_PATH("riftwii/covers"), &st) == 0 || stat(RIFTWII_PATH("riftwii/channel_offered.txt"), &st) == 0;
 	if (!used) {
 		ShowTutorial();
 		// Plenty never play from a disc: the Disc drive's tile is asked for.
@@ -3679,7 +3680,7 @@ static bool ShowTutorialOnce()
 		if (!disc)
 			ShowPopup(tr("Disc Channel"), tr("You can bring it back any time in Settings > Disc Channel."), tr("OK"));
 	}
-	mkdir("sd:/riftwii", 0777);
+	mkdir(RIFTWII_PATH("riftwii"), 0777);
 	if (FILE* f = std::fopen(kMarker, "w")) {
 		std::fprintf(f, "%s\n", used ? "used before" : "shown");
 		std::fclose(f);
@@ -3693,7 +3694,7 @@ static bool ShowTutorialOnce()
 // leaves sd:/riftwii/mac_files_noted.txt.
 static void SuggestDotClean()
 {
-	static const char* const kMarker = "sd:/riftwii/mac_files_noted.txt";
+	const char* const kMarker = RIFTWII_PATH("riftwii/mac_files_noted.txt");
 	static bool asked = false;
 	struct stat st;
 	if (asked || stat(kMarker, &st) == 0) return;
@@ -3716,7 +3717,7 @@ static void SuggestDotClean()
 	if (ShowPopup(tr("Files from a Mac on the SD card"),
 		tr("This SD card has hidden files that macOS makes when it copies (names that start with \"._\"). RiftWii skips them, but they fill the card and can confuse other homebrew. To remove them, put the card in your Mac, open Terminal and type: dot_clean -m /Volumes/ followed by the card's name. On Windows, delete the files whose names start with \"._\"."),
 		tr("OK"), tr("Don't show again")) == 0) return;
-	mkdir("sd:/riftwii", 0777);
+	mkdir(RIFTWII_PATH("riftwii"), 0777);
 	if (FILE* f = std::fopen(kMarker, "w")) {
 		std::fprintf(f, "%u\n", found);
 		std::fclose(f);
@@ -3789,7 +3790,8 @@ static void TeaseCisoOnce(const riftwii::wii::ImageCatalog& sd, const riftwii::w
 // the installer.
 static bool OfferChannelOnce()
 {
-	static const char* const kMarker = "sd:/riftwii/channel_offered.txt";
+    if (riftwii::wii::PrimaryOnUsb()) return false;
+	const char* const kMarker = RIFTWII_PATH("riftwii/channel_offered.txt");
 	struct stat st;
 	if (stat(kMarker, &st) == 0) return false;
 	if (riftwii::wii::CurrentRestartNote().kind == riftwii::wii::RestartKind::ChannelDone) return false;
@@ -4025,7 +4027,7 @@ static bool SdWatchRemountForMenu()
 	__io_wiisd.shutdown();
 	if (!__io_wiisd.startup() || !__io_wiisd.isInserted()) return false;
 	if (!fatMountSimple("sd", riftwii::wii::sd_interface())) return false;
-	mkdir("sd:/riftwii", 0777);
+	mkdir(RIFTWII_PATH("riftwii"), 0777);
 	riftwii::wii::LogReopen();
 	return true;
 }
@@ -4947,7 +4949,8 @@ static int MenuSource(FrontendState& state)
 			const u64 nowSd = gettime();
 			if (g_sdWatchLast == 0 || diff_msec(g_sdWatchLast, nowSd) >= 500) {
 				g_sdWatchLast = nowSd;
-				const riftwii::SdHotplugEvent sdEvent = g_sdWatch.update(SdWatchInsertedNow());
+				const riftwii::SdHotplugEvent sdEvent = riftwii::wii::PrimaryOnUsb()
+                    ? riftwii::SdHotplugEvent::None : g_sdWatch.update(SdWatchInsertedNow());
 				if (sdEvent == riftwii::SdHotplugEvent::Removed && !g_sdGone && !g_sdRemovalPending) {
 					riftwii::wii::NetCancelBackground();
 					g_sdRemovalPending = true;
@@ -6755,7 +6758,7 @@ static bool ShowGcControlsOnce(const FrontendState& state)
 	// Without a card nothing could remember it: it would show every start.
 	if (stat("sd:/", &st) != 0 || stat(kMarker, &st) == 0) return true;
 	if (!ShowGcControls(true)) return false;
-	mkdir("sd:/riftwii", 0777);
+	mkdir(RIFTWII_PATH("riftwii"), 0777);
 	mkdir("sd:/riftwii/gc", 0777);
 	if (FILE* f = std::fopen(kMarker, "w")) {
 		std::fprintf(f, "shown\n");
@@ -7248,7 +7251,7 @@ static bool RestoreGcBackup(const std::string& cardPath, const std::string& fold
 		logf("GameCube card %s: oldest backup %s/%s deleted, to keep the newest %u\n", cardPath.c_str(), folder.c_str(),
 			old.c_str(), static_cast<unsigned>(riftwii::kGcBackupsKept));
 	// A card that was never made: its folder may be missing too.
-	mkdir("sd:/riftwii", 0777);
+	mkdir(RIFTWII_PATH("riftwii"), 0777);
 	mkdir("sd:/riftwii/gc", 0777);
 	mkdir("sd:/riftwii/gc/cards", 0777);
 	if (!riftwii::gc_overwrite_file(cardPath, bytes, why)) {
@@ -7596,7 +7599,7 @@ static void MenuGcSdCard(FrontendState& state)
 				ShowPopup(tr("Save not copied"), FlatCapped(why, 200), tr("OK"));
 				return false;
 			}
-			mkdir("sd:/riftwii", 0777);
+			mkdir(RIFTWII_PATH("riftwii"), 0777);
 			mkdir("sd:/riftwii/gc", 0777);
 			mkdir(kGcSavesDir, 0777);
 			const std::string free = FreeGciPath(kGcSavesDir, save);
@@ -7762,7 +7765,7 @@ static void ListNintendontSaves(NintendontFinds& finds)
 static bool GcGameUsesSharedCard(const std::string& id)
 {
 	std::vector<std::uint8_t> bytes;
-	if (!ReadSmallFile(std::string(riftwii::wii::kChoicesDir) + "/" + id + ".txt", 1u << 20, bytes)) return false;
+	if (!ReadSmallFile(std::string(riftwii::wii::kChoicesDir()) + "/" + id + ".txt", 1u << 20, bytes)) return false;
 	riftwii::LaunchModel choices;
 	choices.restore(std::string(bytes.begin(), bytes.end()));
 	return choices.game.gc_card == "shared";
@@ -7872,7 +7875,7 @@ static void BringNintendontSaves(const NintendontFinds& finds, const std::vector
 			if (written && exists) {
 				written = WriteChangedBlocks(target.path, before, card, CardChange::Import);
 			} else if (written) {
-				mkdir("sd:/riftwii", 0777);
+				mkdir(RIFTWII_PATH("riftwii"), 0777);
 				mkdir("sd:/riftwii/gc", 0777);
 				mkdir("sd:/riftwii/gc/cards", 0777);
 				written = riftwii::gc_overwrite_file(target.path, card, why);
@@ -8137,7 +8140,7 @@ static void CopyRealGcCard(const FrontendState& state, bool wholeCard)
 		ShowPopup(tr("Memory card"), GcRealError(CARD_ERROR_BROKEN), tr("OK"));
 		return;
 	}
-	mkdir("sd:/riftwii", 0777);
+	mkdir(RIFTWII_PATH("riftwii"), 0777);
 	mkdir("sd:/riftwii/gc", 0777);
 	const time_t now = time(nullptr);
 	struct tm local;
@@ -12834,9 +12837,8 @@ static int MenuSettings(FrontendState& state)
 }
 
 // ---------------------------------------------------------------------------
-// No SD card: RiftWii keeps its settings, logs and saves there, so it
-// does not run without one (USB mode is not supported yet). A QR code
-// leads to SD cards to buy. Try again restarts RiftWii (wii/core/restart.hpp):
+// No readable application volume. USB starts may retry without an SD
+// card; the existing SD recovery page remains available for SD starts. Try again restarts RiftWii (wii/core/restart.hpp):
 // the restart's fresh IOS lets go of a card the last run left held.
 
 static bool g_noSdFromUsb = false;
@@ -12848,23 +12850,23 @@ static int MenuNeedsSd()
 	// Started again after a failed launch, a crash or Try again: a card is
 	// most likely in the slot, just not answering.
 	const bool restarted = riftwii::wii::CurrentRestartNote().kind != riftwii::wii::RestartKind::None;
-	const bool canRetry = !g_noSdFromUsb && riftwii::wii::CanRestart();
-	GuiText titleTxt(tr("RiftWii needs an SD card"), 28, skin::kInk);
+	const bool canRetry = riftwii::wii::CanRestart();
+	GuiText titleTxt(g_noSdFromUsb ? tr("No readable storage") : tr("RiftWii needs an SD card"), 28, skin::kInk);
 	Place(titleTxt, 40, 36);
-	GuiText subTxt(g_noSdFromUsb ? tr("USB mode is not supported yet")
+	GuiText subTxt(g_noSdFromUsb ? tr("USB storage could not be mounted")
 		: restarted          ? tr("The SD card could not be read")
 				     : tr("No SD card was found"),
 		18, skin::kAccentInk);
 	Place(subTxt, 40, 74);
 	Panel card(skin::panelSettings, 34, 120);
 	GuiText bodyTxt(g_noSdFromUsb
-			? tr("RiftWii was started from a USB drive. It keeps its settings, logs and saves on the SD card, so for now it needs one to run. Copy the sd-card folder from the RiftWii zip to a FAT32 SD card, put the card in the Wii and start RiftWii from it.")
+			? tr("Use a FAT32 USB drive with apps/riftwii/boot.dol. Connect it to USB port 0, wait a few seconds, then try again. No SD card is required.")
 			: restarted
 			? tr("RiftWii started again and could not read the SD card this time. Press Try again. If that doesn't help, turn the Wii off, push the card in firmly and start RiftWii again.")
 			: tr("RiftWii keeps its settings, logs and saves on the SD card and could not read one. Put a FAT32 SD card in the Wii with the sd-card folder from the RiftWii zip on it, then start RiftWii again."),
 		16, skin::kInkSoft);
 	Place(bodyTxt, 56, 142);
-	bodyTxt.SetWrap(true, 330, 10);
+	bodyTxt.SetWrap(true, g_noSdFromUsb ? 520 : 330, 10);
 	constexpr int kModule = 5;
 	riftwii::QrCode code;
 	riftwii::make_qr("https://www.amazon.com/s?k=16gb+sd+card", code);
@@ -12886,8 +12888,10 @@ static int MenuNeedsSd()
 	w.Append(&subTxt);
 	w.Append(&card);
 	w.Append(&bodyTxt);
-	w.Append(&qr);
-	w.Append(&scanTxt);
+	if (!g_noSdFromUsb) {
+        w.Append(&qr);
+        w.Append(&scanTxt);
+    }
 	w.Append(&exitBtn.button);
 	if (canRetry) w.Append(&retryBtn.button);
 	mainWindow->Append(&w);
@@ -12993,8 +12997,8 @@ int MainMenu(int menu, FrontendState& state)
 	};
 	riftwii::wii::transition::Begin(riftwii::wii::transition::Kind::FromBlack);
 	riftwii::wii::GuiScriptLoad(riftwii::wii::CurrentRestartNote().kind == riftwii::wii::RestartKind::None
-	                                ? "sd:/riftwii/guiscript.txt"
-	                                : "sd:/riftwii/guiscript-restart.txt");
+	                                ? RIFTWII_PATH("riftwii/guiscript.txt")
+	                                : RIFTWII_PATH("riftwii/guiscript-restart.txt"));
 
 	ResumeGui();
 

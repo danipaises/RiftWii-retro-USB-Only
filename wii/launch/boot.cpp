@@ -7,6 +7,7 @@
 // SPDX-FileCopyrightText: WiiFlow contributors <https://github.com/Fledge68/WiiFlow_Lite>
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "boot.hpp"
+#include "riftwii/storagepaths.hpp"
 #include "progress.hpp"
 
 #include <fat.h>
@@ -394,6 +395,7 @@ void release_card_and_log() {
     if (LaunchMusicPlaying()) logf("Menu music: plays on until the game starts\n");
     logf("Releasing the SD card (the log ends here; the rest is on screen)\n");
     LogClose();
+    UnmountPrimaryUsb();
     fatUnmount("sd:");
     sd_interface()->shutdown();
     g_card_live_for_log = false;
@@ -1091,7 +1093,7 @@ void plan_game_extras(const DolHeader& dol, const ExtrasContext& ctx, GameExtras
     }
     // In-game screenshots: below the adapter, the runtime, or alone.
     if (g_extras.screenshots && whole_mem1) logf("Screenshots: off: %s\n", whole_mem1_why);
-    if (g_extras.screenshots && !ctx.gx_protected && !whole_mem1) {
+    if (g_extras.screenshots && !PrimaryOnUsb() && !ctx.gx_protected && !whole_mem1) {
         std::string why;
         ShotIpc known;
         if (resident != nullptr) {
@@ -1114,7 +1116,9 @@ void plan_game_extras(const DolHeader& dol, const ExtrasContext& ctx, GameExtras
     }
     // A crash in the game is saved for the next start: below all of the
     // above, always.
-    if (ctx.gx_protected) {
+    if (PrimaryOnUsb()) {
+        logf("Game crashes: NAND recording is disabled in the USB development build\n");
+    } else if (ctx.gx_protected) {
         logf("Game crashes: not recorded: the game checks its own code (MetaFortress); RiftWii's hooks stay out\n");
     } else if (debug_off("fault")) {
         logf("Game crashes: not recorded: debug_off (and the BCA read not answered)\n");
@@ -1153,7 +1157,7 @@ void plan_game_extras(const DolHeader& dol, const ExtrasContext& ctx, GameExtras
     // of the above, when the menu saw a Pro Controller.
     std::string why;
     const PadPairings pairings = ReadPadPairings();
-    const bool wanted = wpad_log_wanted(pairings.pro.size(), why);
+    const bool wanted = !PrimaryOnUsb() && wpad_log_wanted(pairings.pro.size(), why);
     if (!wanted) {
         // Said only when a setting turned it off or a Pro is paired: most
         // launches never want it.
@@ -1300,6 +1304,7 @@ RestartRequest g_restart_request;
 // whenever a request was made but cannot be kept; says nothing when none was.
 void prepare_restart_request(const BootOptions& options) {
     g_restart_request = RestartRequest{};
+    if (PrimaryOnUsb()) return;  // the request writer uses raw SD sectors
     if (g_extras.restart_args.empty()) return;
     if (!options.install_resident) {
         logf("Reset: the game's own Reset restarts it as it always does: no RiftWii runtime goes into this game, "
@@ -3136,6 +3141,7 @@ std::string pack_banner_name(const std::array<std::string, 10>& names) {
 }
 
 void write_play_log(const DiscProbe& probe, const std::array<std::string, 10>& banner_names) {
+    if (PrimaryOnUsb()) return;  // leave the Wii Message Board unchanged
     const auto off = Settings().other.find("message_board");
     if (off != Settings().other.end() && off->second == "off") return;
     // A pack with its own banner (a mod's own name, as a patched disc's
@@ -3424,13 +3430,14 @@ bool boot_game(const DiscProbe& probe, BootOptions options, std::string& error) 
     } else if (effective.preserve_current_ios) {
         // The preserved IOS may own a USB virtual disc. Reacquiring all
         // default devices could interfere with it, so recover only SD/log.
-        if (fatMountSimple("sd", sd_interface())) {
+        if (PrimaryOnUsb() ? MountPrimaryAfterReload() : fatMountSimple("sd", sd_interface())) {
             LogReopen();
         } else {
             error += "; additionally could not remount SD after USB boot failure";
         }
     } else {
-        fatInitDefault();  // give the caller its card back so it can log this
+        if (PrimaryOnUsb()) MountPrimaryForMenu();
+        else fatInitDefault();  // give the caller its card back so it can log this
     }
     logf("Boot failed: %s\n", error.c_str());
     return false;

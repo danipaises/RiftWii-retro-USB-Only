@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include "riftwii/storagepaths.hpp"
+
 #include <string>
 
 // Cheats from GameHacking.org (riftwii/ghcheats.hpp) for a Wii game that
@@ -14,7 +16,7 @@
 // page waits for it as it does for rc24).
 namespace riftwii::wii {
 
-constexpr const char* kGameHackingDir = "sd:/riftwii/cheats/gamehacking";
+inline const char* kGameHackingDir() { return RIFTWII_PATH("riftwii/cheats/gamehacking"); }
 
 enum class GameHackingResult {
     Found,        // `text` is the game's cheat file

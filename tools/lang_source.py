@@ -1101,17 +1101,17 @@ T = {
     "(Log: sd:/riftwii/session.log)": (
         "(Registro: sd:/riftwii/session.log)", "(ログ: sd:/riftwii/session.log)",
         "(Log: sd:/riftwii/session.log)", "(Log: sd:/riftwii/session.log)"),
-    # No SD card at start (USB mode is not supported yet)
+    # No SD card at start (USB storage could not be mounted)
     "RiftWii needs an SD card": (
         "RiftWii necesita una tarjeta SD", "RiftWiiにはSDカードが必要です", "A RiftWii precisa de um cartão SD",
         "RiftWii ha bisogno di una scheda SD"),
-    "USB mode is not supported yet": (
+    "USB storage could not be mounted": (
         "El modo USB aún no es compatible", "USBモードにはまだ対応していません", "O modo USB ainda não é suportado",
         "La modalità USB non è ancora supportata"),
     "No SD card was found": (
         "No se encontró ninguna tarjeta SD", "SDカードが見つかりませんでした", "Nenhum cartão SD foi encontrado",
         "Nessuna scheda SD trovata"),
-    "RiftWii was started from a USB drive. It keeps its settings, logs and saves on the SD card, so for now it needs one to run. Copy the sd-card folder from the RiftWii zip to a FAT32 SD card, put the card in the Wii and start RiftWii from it.": (
+    "Use a FAT32 USB drive with apps/riftwii/boot.dol. Connect it to USB port 0, wait a few seconds, then try again. No SD card is required.": (
         "RiftWii se inició desde una unidad USB. Guarda sus ajustes, registros y partidas en la tarjeta SD, así que por ahora necesita una para funcionar. Copia la carpeta sd-card del zip de RiftWii a una tarjeta SD en FAT32, ponla en la Wii e inicia RiftWii desde ella.",
         "RiftWiiはUSBドライブから起動されました。設定、ログ、セーブはSDカードに保存するので、今のところ動かすにはSDカードが必要です。RiftWiiのzipにあるsd-cardフォルダをFAT32のSDカードにコピーし、Wiiに入れて、そこからRiftWiiを起動してください。",
         "A RiftWii foi iniciada de uma unidade USB. Ela guarda as configurações, os registros e os saves no cartão SD, então por enquanto precisa de um para funcionar. Copie a pasta sd-card do zip da RiftWii para um cartão SD em FAT32, coloque o cartão no Wii e inicie a RiftWii por ele.",
@@ -3049,11 +3049,11 @@ KO = {
         "(로그: sd:/riftwii/session.log)",
     "RiftWii needs an SD card":
         "RiftWii에는 SD 카드 필요",
-    "USB mode is not supported yet":
+    "USB storage could not be mounted":
         "USB 모드는 아직 미지원",
     "No SD card was found":
         "SD 카드를 찾을 수 없음",
-    "RiftWii was started from a USB drive. It keeps its settings, logs and saves on the SD card, so for now it needs one to run. Copy the sd-card folder from the RiftWii zip to a FAT32 SD card, put the card in the Wii and start RiftWii from it.":
+    "Use a FAT32 USB drive with apps/riftwii/boot.dol. Connect it to USB port 0, wait a few seconds, then try again. No SD card is required.":
         "RiftWii는 USB 드라이브에서 실행됩니다. 설정, 로그, 저장 데이터는 SD 카드에 기록되므로 현재 실행을 위해서는 SD 카드가 필요합니다. RiftWii 압축 파일에 포함된 'sd-card' 폴더를 FAT32 형식의 SD 카드에 복사한 뒤, 해당 카드를 Wii에 연결하고 RiftWii를 실행하세요.",
     "RiftWii keeps its settings, logs and saves on the SD card and could not read one. Put a FAT32 SD card in the Wii with the sd-card folder from the RiftWii zip on it, then start RiftWii again.":
         "RiftWii는 설정, 로그, 세이브 파일을 SD 카드에 저장하는데, 현재 SD 카드를 읽을 수 없는 상태입니다. RiftWii 압축 파일에 포함된 'sd-card' 폴더를 FAT32 형식의 SD 카드에 담아 Wii에 삽입한 후, RiftWii를 다시 실행해 보세요.",
@@ -4893,11 +4893,11 @@ FR = {
         "(Journal : sd:/riftwii/session.log)",
     "RiftWii needs an SD card":
         "RiftWii nécessite une carte SD",
-    "USB mode is not supported yet":
+    "USB storage could not be mounted":
         "Le mode 100% USB n'est pas encore pris en charge",
     "No SD card was found":
         "Aucune carte SD trouvée",
-    "RiftWii was started from a USB drive. It keeps its settings, logs and saves on the SD card, so for now it needs one to run. Copy the sd-card folder from the RiftWii zip to a FAT32 SD card, put the card in the Wii and start RiftWii from it.":
+    "Use a FAT32 USB drive with apps/riftwii/boot.dol. Connect it to USB port 0, wait a few seconds, then try again. No SD card is required.":
         "RiftWii a été démarré depuis un stockage USB. Il nécessite une carte SD pour ses paramètres et sauvegardes. Copiez le dossier sd-card du fichier zip sur une carte SD au format FAT32 puis insérez-la.",
     "RiftWii keeps its settings, logs and saves on the SD card and could not read one. Put a FAT32 SD card in the Wii with the sd-card folder from the RiftWii zip on it, then start RiftWii again.":
         "Impossible de lire la carte SD contenant vos configurations et sauvegardes. Veuillez insérer une carte SD FAT32 munie du dossier sd-card extrait de l'archive zip.",
@@ -6791,6 +6791,18 @@ FR.update({
         "RiftWii ne peut pas laisser de note sur la carte SD ; si l'installateur se bloque, le prochain démarrage ne le saura pas",
     "Open anyway": "Ouvrir quand même",
 })
+
+
+# USB application storage recovery.
+T['No readable storage'] = ('No se puede leer el almacenamiento', 'ドライブを読み込めません', 'Nenhum armazenamento legível', 'Nessuna memoria leggibile')
+KO['No readable storage'] = '저장 장치를 읽을 수 없습니다'
+FR['No readable storage'] = 'Aucun stockage lisible'
+T['USB storage could not be mounted'] = ('No se pudo montar la unidad USB', 'USBドライブを読み込めません', 'Não foi possível montar o USB', 'Impossibile montare la memoria USB')
+KO['USB storage could not be mounted'] = 'USB 저장 장치를 연결할 수 없습니다'
+FR['USB storage could not be mounted'] = 'Impossible de monter le stockage USB'
+T['Use a FAT32 USB drive with apps/riftwii/boot.dol. Connect it to USB port 0, wait a few seconds, then try again. No SD card is required.'] = ('Usa una unidad USB FAT32 con apps/riftwii/boot.dol. Conéctala al puerto USB 0, espera unos segundos y vuelve a intentarlo. No hace falta una tarjeta SD.', 'FAT32のUSBドライブにapps/riftwii/boot.dolを入れてください。USBポート0につなぎ、少し待ってからやり直してください。SDカードは不要です。', 'Use um pendrive FAT32 com apps/riftwii/boot.dol. Conecte-o à porta USB 0, espere alguns segundos e tente de novo. Nenhum cartão SD é necessário.', 'Usa una memoria USB FAT32 con apps/riftwii/boot.dol. Collegala alla porta USB 0, attendi qualche secondo e riprova. Non serve una scheda SD.')
+KO['Use a FAT32 USB drive with apps/riftwii/boot.dol. Connect it to USB port 0, wait a few seconds, then try again. No SD card is required.'] = 'apps/riftwii/boot.dol 파일이 있는 FAT32 USB를 사용하세요. USB 포트 0에 연결하고 몇 초 후 다시 시도하세요. SD 카드는 필요하지 않습니다.'
+FR['Use a FAT32 USB drive with apps/riftwii/boot.dol. Connect it to USB port 0, wait a few seconds, then try again. No SD card is required.'] = 'Utilisez un stockage USB FAT32 contenant apps/riftwii/boot.dol. Branchez-le au port USB 0, attendez quelques secondes et réessayez. Aucune carte SD nécessaire.'
 
 
 def check(repo):

@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "riftwii/storagepaths.hpp"
 #include "screenshot.hpp"
 
 #include <gccore.h>
@@ -27,7 +28,7 @@
 namespace riftwii::wii {
 namespace {
 
-constexpr const char* kShotFolder = "sd:/riftwii/screenshots";
+const char* kShotFolder() { return RIFTWII_PATH("riftwii/screenshots"); }
 constexpr std::size_t kFrameBytes = kShotHeaderBytes + std::size_t(kShotMaxWidth) * 2 * kShotMaxLines;
 
 // Worker: one job at a time; the GUI thread hands a frame over only
@@ -58,7 +59,7 @@ unsigned NextNumber(const std::string& prefix) {
     auto it = g_next.find(prefix);
     if (it == g_next.end()) {
         unsigned highest = 0;
-        if (DIR* d = opendir(kShotFolder)) {
+        if (DIR* d = opendir(kShotFolder())) {
             while (dirent* e = readdir(d)) {
                 const std::string name = e->d_name;
                 if (name.size() < prefix.size() + 6 || name.compare(0, prefix.size() + 1, prefix + "-") != 0) continue;
@@ -78,9 +79,9 @@ bool FileSink(void* user, const std::uint8_t* data, std::size_t size) {
 
 // Writes a YUYV picture as the next <prefix>-NNNN.png.
 bool SavePng(const std::string& prefix, const u8* yuyv, std::uint32_t width, std::uint32_t lines, bool double_lines) {
-    mkdir("sd:/riftwii", 0777);
-    mkdir(kShotFolder, 0777);
-    const std::string path = std::string(kShotFolder) + "/" + shot_file_name(prefix, NextNumber(prefix));
+    mkdir(RIFTWII_PATH("riftwii"), 0777);
+    mkdir(kShotFolder(), 0777);
+    const std::string path = std::string(kShotFolder()) + "/" + shot_file_name(prefix, NextNumber(prefix));
     FILE* f = std::fopen(path.c_str(), "wb");
     if (!f) {
         logf("Screenshot: cannot write %s\n", path.c_str());
@@ -188,6 +189,7 @@ void ImportOpenShots() {
 // close after a failed open took the menu's channel scan's use away, so
 // /dev/fs closed under that scan as before the count.
 void ImportGameShots() {
+    if (PrimaryOnUsb()) return;  // do not delete or import files from NAND
     if (NandOpen() < 0) return;
     ImportOpenShots();
     // /dev/fs is not kept open: an IOS reload with it open damages the heap.

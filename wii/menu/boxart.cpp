@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "riftwii/storagepaths.hpp"
 #include "boxart.hpp"
 
 #include <ogc/cache.h>
@@ -25,7 +26,7 @@
 namespace riftwii::wii {
 namespace {
 
-constexpr const char* kBoxDir = "sd:/riftwii/boxes";
+const char* kBoxDir() { return RIFTWII_PATH("riftwii/boxes"); }
 constexpr std::time_t kRetryAfter = 7 * 24 * 60 * 60;
 // A 4:3 shelf draws 27 boxes, a 16:9 one 43 (wii/menu/gui_shelf.cpp): room for
 // all of those, about 4 MB of MEM2, taken slot by slot as the shelf first
@@ -35,8 +36,8 @@ constexpr std::time_t kRetryAfter = 7 * 24 * 60 * 60;
 constexpr int kSlots = 44;
 
 // .rw2: the box with its back (version 1's .rwb files had no back and are left alone).
-std::string BoxPath(const std::string& id) { return std::string(kBoxDir) + "/" + id + ".rw2"; }
-std::string MissPath(const std::string& id) { return std::string(kBoxDir) + "/" + id + ".none"; }
+std::string BoxPath(const std::string& id) { return std::string(kBoxDir()) + "/" + id + ".rw2"; }
+std::string MissPath(const std::string& id) { return std::string(kBoxDir()) + "/" + id + ".none"; }
 
 bool ValidId(const std::string& id) {
     if (id.size() != 6) return false;
@@ -68,8 +69,8 @@ bool WriteAll(const std::string& path, const std::vector<std::uint8_t>& bytes) {
 
 CoverFetch FetchBoxNow(const std::string& game_id, std::string& error) {
     if (!ValidId(game_id)) return CoverFetch::NotFound;
-    mkdir("sd:/riftwii", 0777);
-    mkdir(kBoxDir, 0777);
+    mkdir(RIFTWII_PATH("riftwii"), 0777);
+    mkdir(kBoxDir(), 0777);
     for (const std::string& region : cover_regions(game_id, MenuLanguage())) {
         std::vector<std::uint8_t> png;
         std::string why;

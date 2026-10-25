@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "usbcatalog.hpp"
+#include "riftwii/storagepaths.hpp"
 
 #include <fat.h>
 #include <gccore.h>
 #include <ogc/es.h>
 #include <ogc/lwp_watchdog.h>
+#include <ogc/mutex.h>
 #include <ogc/usbstorage.h>
 #include <malloc.h>
 #include <unistd.h>
@@ -104,6 +106,14 @@ struct PickedDrive {
 };
 PickedDrive g_picked;
 constexpr u32 kPickedBounce = 32 * 1024;
+mutex_t g_usb_lock = LWP_MUTEX_NULL;
+struct UsbLocked {
+    UsbLocked() {
+        if (g_usb_lock == LWP_MUTEX_NULL) LWP_MutexInit(&g_usb_lock, true);
+        LWP_MutexLock(g_usb_lock);
+    }
+    ~UsbLocked() { LWP_MutexUnlock(g_usb_lock); }
+};
 
 bool reopen_picked();
 
@@ -162,12 +172,17 @@ const DISC_INTERFACE kPickedIo = {DEVICE_TYPE_WII_USB, FEATURE_MEDIUM_CANREAD | 
 // the drive again (opened under its new device id), so a failed read does
 // that once and is tried again.
 bool usb_read_sectors(sec_t sector, sec_t count, void* out) {
+    UsbLocked lock;
     if (g_picked.open) return picked_read(sector, count, out);
     if (__io_usbstorage.readSectors(sector, count, out)) return true;
     const bool back = __io_usbstorage.isInserted();
     logf("USB: a read of sector %lu failed; the drive %s\n", static_cast<unsigned long>(sector),
          back ? "was opened again (a USB device change, such as a network adapter starting?)" : "is gone");
     return back && __io_usbstorage.readSectors(sector, count, out);
+}
+bool usb_write_sectors(sec_t sector, sec_t count, const void* data) {
+    UsbLocked lock;
+    return g_picked.open ? picked_write(sector, count, data) : __io_usbstorage.writeSectors(sector, count, data);
 }
 // libfat's usb: goes through the same retry.
 DISC_INTERFACE g_usb_io;
@@ -467,17 +482,20 @@ bool open_usb_raw_disc(std::string& error) {
     return true;
 }
 
-bool ensure_usb(std::string& error) {
+bool ensure_usb(std::string& error, bool startup = false) {
     if (g_raw_mounted && (g_usb_volume || g_usb_raw_disc || g_usb_wbfs)) return true;
     g_usb_wiiu_drive = false;
     // libogc's storage driver and d2x each pick one drive, not always the
     // same one when two are plugged in (a Wii U's own drive and the games'),
     // so with more than one RiftWii picks the drive it can read itself.
-    USB_Initialize();
+    const s32 usb_init = USB_Initialize();
+    logf("USB: IOS%d rev %d; USB host initialization returned %d\n", IOS_GetVersion(), IOS_GetRevision(), usb_init);
     static usb_device_entry devices[8] ATTRIBUTE_ALIGN(32);
     u8 listed = 0;
     u8 drives = 0;
-    if (USB_GetDeviceList(devices, 8, kUsbClassMassStorage, &listed) >= 0 && listed > 1) {
+    const s32 device_list = USB_GetDeviceList(devices, 8, kUsbClassMassStorage, &listed);
+    logf("USB: device list returned %d with %u entries\n", device_list, static_cast<unsigned>(listed));
+    if (device_list >= 0 && listed > 1) {
         for (u8 i = 0; i < listed && i < 8; ++i) drives += is_mass_storage(devices[i]) ? 1 : 0;
     }
     if (drives > 1) {
@@ -529,6 +547,7 @@ bool ensure_usb(std::string& error) {
         logf("USB: mounting\n");
         g_usb_io = g_picked.open ? kPickedIo : __io_usbstorage;
         g_usb_io.readSectors = usb_read_sectors;
+        g_usb_io.writeSectors = usb_write_sectors;
         g_libfat_mounted = fatMountSimple("usb", &g_usb_io);
         if (!g_libfat_mounted) logf("USB: libfat cannot mount it (not FAT32); reading it raw\n");
     }
@@ -542,7 +561,8 @@ bool ensure_usb(std::string& error) {
         return true;
     }
     std::vector<std::string> partition_notes;
-    const bool mounted = mount_image_volume(&usb_read, g_usb_volume, error, usb_wanted_folders(), &partition_notes);
+    const bool mounted = mount_image_volume(&usb_read, g_usb_volume, error,
+                                             startup ? default_wanted_folders() : usb_wanted_folders(), &partition_notes);
     for (const std::string& note : partition_notes) logf("USB: %s\n", note.c_str());
     if (!mounted) {
         // A drive formatted as WBFS by a USB loader's tools (libfat cannot
@@ -1050,8 +1070,8 @@ void apply_titles(ImageCatalog& c) {
 // bounded SD remount attempt and restore the caller-selected append log.
 bool restore_sd_and_log(const char* log_path, std::string& error) {
     if (g_sd_back) return true;  // remounted right after the reload; the log is open
-    if (!fatMountSimple("sd", sd_interface())) {
-        error += "; additionally could not remount SD after IOS reload";
+    if (ums::Stuck() || !MountPrimaryAfterReload()) {
+        error += "; additionally could not remount the application storage after IOS reload";
         return false;
     }
     if (log_path) LogOpen(log_path, true);
@@ -1891,8 +1911,27 @@ std::vector<std::string> usb_wanted_folders() {
     return wanted;
 }
 
+bool mount_usb_app(std::string& error) {
+    logf("USB application mount: starting on IOS%d rev %d\n", IOS_GetVersion(), IOS_GetRevision());
+    if (!ensure_usb(error, true)) {
+        logf("USB application mount: failed on IOS%d: %s\n", IOS_GetVersion(), error.c_str());
+        return false;
+    }
+    if (!g_libfat_mounted) {
+        error = "USB-only needs a writable FAT volume for settings, themes and logs";
+        logf("USB application mount: %s\n", error.c_str());
+        return false;
+    }
+    logf("USB application mount: FAT volume is ready on IOS%d\n", IOS_GetVersion());
+    return true;
+}
+
 bool scan_sd_games(ImageCatalog& out, std::string& error) {
     out = ImageCatalog{}; out.device = ImageDevice::Sd;
+    if (PrimaryOnUsb() && !libogc_sd_inserted()) {
+        error.clear();
+        return true;
+    }
     // For setups that keep every game on a USB drive: the card still serves packs,
     // themes, saves and logs, only the image scan is skipped. No status either, so
     // Home shows no "no games" problem for a card that was never meant to have any.
@@ -1954,6 +1993,7 @@ std::string release_for_reload() {
     libogc_sd_stop();
     g_sd_back = false;
     step("closing the SD card");
+    UnmountPrimaryUsb();
     release_usb_driver();
     step("closing the USB drive");
     di::close();
@@ -2003,7 +2043,7 @@ bool activate_disc_cios(int cios_slot, const char* log_path, std::string& error,
         const std::string released = release_for_reload();
         const ReloadResult r = reload_ios(slot, error, true);
         if (r == ReloadResult::Terminal) return false;
-        g_sd_back = fatMountSimple("sd", sd_interface());
+        g_sd_back = MountPrimaryAfterReload();
         if (g_sd_back && log_path) LogOpen(log_path, true);
         log_release_heap(released);
         if (r == ReloadResult::NotInstalled || r == ReloadResult::Failed) {
@@ -2175,7 +2215,7 @@ bool activate_gamecube_usb(const std::uint8_t* first_bytes, std::uint64_t first_
     if (r == ReloadResult::NotInstalled || r == ReloadResult::Failed) return post_reload_failure(log_path, error);
     const s32 running = IOS_GetVersion();
     const s32 revision = IOS_GetRevision();
-    g_sd_back = fatMountSimple("sd", sd_interface());
+    g_sd_back = MountPrimaryAfterReload();
     if (g_sd_back) {
         if (log_path) LogOpen(log_path, true);
         else LogReopen();  // the log the launch was writing
@@ -2306,7 +2346,7 @@ bool activate_image_game(const ImageGame& game, int cios_slot, void*& storage, s
     // An RVZ game's disc is its stub, on the card (prepare_rvz_launch).
     const ImageDevice disc_device = rvz ? ImageDevice::Sd : game.device;
     if (disc_device == ImageDevice::Sd) use_d2x_sd(true);
-    g_sd_back = fatMountSimple("sd", sd_interface());
+    g_sd_back = MountPrimaryAfterReload();
     if (g_sd_back && log_path) LogOpen(log_path, true);
     log_release_heap(released);
     logf("%s: reloaded IOS%d rev %d for slot %d (%s)\n", device_name(game.device), running, revision, cios_slot,

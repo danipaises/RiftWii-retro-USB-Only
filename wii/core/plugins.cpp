@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "riftwii/storagepaths.hpp"
 #include "plugins.hpp"
 
 #include <dirent.h>
@@ -53,8 +54,8 @@ const char* BuildStamp() { return kStampMarker + kStampMarkerPrefix; }
 // the table inside the image; this is every byte of it the loader reads.
 static_assert(sizeof(rwp_plugin) == kPluginTableBytes, "pluginfile.hpp's table size is not plugin_api.h's");
 
-constexpr const char* kTestFile = "sd:/riftwii/plugin_test.txt";
-constexpr const char* kDefaultDirectory = "sd:/apps/riftwii/plugins/";
+const char* kTestFile() { return RIFTWII_PATH("riftwii/plugin_test.txt"); }
+const char* kDefaultDirectory() { return RIFTWII_PATH("apps/riftwii/plugins/"); }
 constexpr std::size_t kMaxPlugins = 8;
 constexpr std::size_t kMaxExtraRanges = 4;
 constexpr std::size_t kRangeNameBytes = 24;
@@ -544,8 +545,8 @@ std::string OtherVersionFile(const std::string& directory, const char* name) {
 std::string FilePath(const char* name) {
     const std::string file = plugin_file_name(name, RIFTWII_VERSION);
     const std::string first = Directory() + file;
-    if (FileExists(first) || Directory() == kDefaultDirectory) return first;
-    const std::string fallback = std::string(kDefaultDirectory) + file;
+    if (FileExists(first) || Directory() == kDefaultDirectory()) return first;
+    const std::string fallback = std::string(kDefaultDirectory()) + file;
     return FileExists(fallback) ? fallback : first;
 }
 
@@ -836,7 +837,7 @@ std::string Summary() {
 
 bool RunTestSwitch(std::string& refused) {
     refused.clear();
-    FILE* file = std::fopen(kTestFile, "rb");
+    FILE* file = std::fopen(kTestFile(), "rb");
     if (file == nullptr) return false;
     std::vector<std::string> names;
     char line[96];
@@ -845,7 +846,7 @@ bool RunTestSwitch(std::string& refused) {
         if (std::sscanf(line, " load %95s", name) == 1) names.push_back(name);
     }
     std::fclose(file);
-    logf("Plugin test (%s): %u plugin(s) to load from %s\n", kTestFile, static_cast<unsigned>(names.size()),
+    logf("Plugin test (%s): %u plugin(s) to load from %s\n", kTestFile(), static_cast<unsigned>(names.size()),
          Directory().c_str());
     for (const std::string& name : names) {
         std::string message;

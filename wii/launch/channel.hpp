@@ -34,6 +34,9 @@ unsigned long long ChannelTitle();
 // 0x80001800 ("STUBHAXX" at 0x80001804), which std::exit goes back
 // through. Started from the RiftWii channel there is none.
 bool StartedByHomebrewChannel();
+// The running ES title, not the DOL path (both loaders pass usb:/...).
+// Does not read the NAND or need storage to be mounted.
+bool StartedByRiftWiiChannel();
 // The Homebrew Channel as an installed title: LULZ (1.1 and later, Wii and
 // vWii), OHBC (the Open Homebrew Channel), HAXX or JODI (older ones), the
 // first with a ticket; 0 when none is installed.

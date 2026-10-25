@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include "riftwii/storagepaths.hpp"
+
 #include <cstdint>
 #include <functional>
 #include <set>
@@ -20,7 +22,7 @@
 //     sd:/riftwii/cheats/<ID>.txt, a text file anyone can edit.
 namespace riftwii::wii {
 
-constexpr const char* kCheatDir = "sd:/riftwii/cheats";
+inline const char* kCheatDir() { return RIFTWII_PATH("riftwii/cheats"); }
 
 // Bytes received so far (headers included), called as they come in.
 using HttpProgress = std::function<void(std::size_t received)>;

@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "riftwii/storagepaths.hpp"
 #include "netpacks.hpp"
 
 #include <dirent.h>
@@ -27,7 +28,7 @@
 namespace riftwii::wii {
 namespace {
 
-constexpr const char* kSettingPath = "sd:/riftwii/network.txt";
+const char* kSettingPath() { return RIFTWII_PATH("riftwii/network.txt"); }
 constexpr int kConnectMs = 4000;
 constexpr int kDiscoverMs = 1500;
 bool g_force = false;
@@ -46,7 +47,7 @@ public:
     std::uint64_t free_bytes() override {
         if (!free_known_ || free_ < kRecheckBelow) {
             struct statvfs vfs;
-            if (statvfs("sd:/", &vfs) != 0) return UINT64_MAX;
+            if (statvfs(RIFTWII_PATH(""), &vfs) != 0) return UINT64_MAX;
             free_ = static_cast<std::uint64_t>(vfs.f_bavail) * vfs.f_frsize;
             free_known_ = true;
         }
@@ -173,7 +174,7 @@ std::vector<std::string> xml_names(const std::string& dir, std::size_t limit, bo
 
 std::vector<NetServer> cached_servers() {
     std::vector<NetServer> out;
-    DIR* d = opendir(kNetCacheDir);
+    DIR* d = opendir(kNetCacheDir());
     if (!d) return out;
     while (const dirent* e = readdir(d)) {
         NetServer s;
@@ -193,8 +194,9 @@ std::string megabytes(std::uint64_t bytes) {
 // flushes everything, as prepare_savegame does for its folder.
 bool remount_card() {
     LogClose();
-    fatUnmount("sd:");
-    const bool mounted = fatMountSimple("sd", sd_interface());
+    if (PrimaryOnUsb()) UnmountPrimaryUsb();
+    else fatUnmount("sd:");
+    const bool mounted = MountPrimaryForMenu();
     LogReopen();
     return mounted;
 }
@@ -254,7 +256,7 @@ std::vector<PackFile> ListPackFiles(std::size_t limit, bool& limited) {
     }
     for (const NetServer& server : cached_servers()) {
         for (const char* sub : {"/riivolution", "/apps/riivolution"}) {
-            const std::string dir = std::string(kNetCacheDir) + "/" + server.folder() + sub;
+            const std::string dir = std::string(kNetCacheDir()) + "/" + server.folder() + sub;
             for (const std::string& name : xml_names(dir, limit - std::min(limit, out.size()), limited)) {
                 add(name, dir + "/" + name, " @ " + server.label());
             }
@@ -282,7 +284,7 @@ DiscIdentity PackIdentity(const DiscProbe& probe) {
 }
 
 std::string NetworkRootOf(const std::string& xml_sd_path) {
-    const std::string prefix = std::string(kNetCacheDir) + "/";
+    const std::string prefix = std::string(kNetCacheDir()) + "/";
     if (xml_sd_path.compare(0, prefix.size(), prefix) != 0) return "";
     const std::size_t end = xml_sd_path.find('/', prefix.size());
     if (end == std::string::npos) return "";
@@ -301,13 +303,13 @@ void RebasePlan(Plan& plan, const std::string& root) {
 }
 
 bool NetworkPacksEnabled() {
-    std::string text = read_text(kSettingPath);
+    std::string text = read_text(kSettingPath());
     return text.compare(0, 2, "on") == 0;
 }
 
 void SetNetworkPacksEnabled(bool on) {
-    mkdir("sd:/riftwii", 0777);
-    FILE* f = std::fopen(kSettingPath, "wb");
+    mkdir(RIFTWII_PATH("riftwii"), 0777);
+    FILE* f = std::fopen(kSettingPath(), "wb");
     if (!f) return;
     std::fputs(on ? "on\n" : "off\n", f);
     std::fclose(f);
@@ -390,7 +392,7 @@ std::string RefreshNetworkPacks(const std::function<void(const char*)>& busy) {
         riifs::SyncOptions options;
         options.force = true;  // small, and a pack list must never be stale
         riifs::SyncStats stats;
-        const std::string root = std::string(kNetCacheDir) + "/" + server.folder();
+        const std::string root = std::string(kNetCacheDir()) + "/" + server.folder();
         if (!riifs::sync(client, card, root, lists, options, stats, error)) {
             logf("Network packs: %s: %s\n", server.label().c_str(), error.c_str());
             last_error = error;

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-FileCopyrightText: 2009 Tantric (libwiigui template) <https://github.com/dborth/libwiigui>
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "riftwii/storagepaths.hpp"
 #include <fat.h>
 #include <gccore.h>
 #include <ogc/lwp_watchdog.h>
@@ -65,6 +66,8 @@
 #include "skin.hpp"
 #include "stash.hpp"
 #include "plugins.hpp"
+#include "usbcatalog.hpp"
+#include "startupusb.hpp"
 
 // Where the player leaves to (the HOME Menu, wii/menu/rift_menu.cpp): 1 back
 // to the loader that started RiftWii (the Homebrew Channel), 2 the Wii
@@ -234,9 +237,8 @@ void OfferRestart(const std::string& error) {
                               "The launch failed: " + error);
 }
 
-// libfat's default initializer probes USB as well as SD. Mount only the SD
-// card here so autorun and the SD-backed package paths work; USB starts when
-// Home reads the drives (wii/storage/usbcatalog.cpp), after the menu IOS is up.
+// Mount the optional SD explicitly; libfat's default initializer would
+// probe USB too, outside the startup USB/IOS handoff below.
 // A few tries: some cards are slow to answer right after the Homebrew
 // Channel lets go of them.
 bool MountStartupSd() {
@@ -266,13 +268,15 @@ void OpenSessionLog(bool sd_mounted) {
         riftwii::wii::EntropyStart();  // the console and the clock, at least
         return;
     }
-    mkdir("sd:/riftwii", 0777);
+    mkdir(RIFTWII_PATH("riftwii"), 0777);
     const bool rotated = riftwii::wii::RotateSessionLog();
-    riftwii::wii::LogOpen("sd:/riftwii/session.log", !rotated);
+    riftwii::wii::LogOpen(RIFTWII_PATH("riftwii/session.log"), !rotated);
     if (!rotated)
         riftwii::wii::logf("The previous session could not be archived; this session is appended to preserve it.\n");
     riftwii::wii::logf("RiftWii %s on %s, IOS%d rev %d\n", RIFTWII_VERSION,
                        riftwii::wii::running_in_dolphin() ? "Dolphin" : "Wii", IOS_GetVersion(), IOS_GetRevision());
+    riftwii::wii::logf("USB-only development build: primary storage is %s\n",
+                       riftwii::wii::PrimaryOnUsb() ? "USB" : "SD");
     // Who started it: the Homebrew Channel and the RiftWii channel both
     // pass the DOL's path.
     const bool has_path = __system_argv != nullptr && __system_argv->argvMagic == ARGV_MAGIC &&
@@ -285,7 +289,7 @@ void OpenSessionLog(bool sd_mounted) {
     // The test driver is left out of release builds (docs/DEVELOPING.md): a
     // card that still has its script from a test run starts the menu.
     struct stat autorun_stat;
-    if (stat("sd:/riftwii/autorun.txt", &autorun_stat) == 0 && S_ISREG(autorun_stat.st_mode))
+    if (stat(RIFTWII_PATH("riftwii/autorun.txt"), &autorun_stat) == 0 && S_ISREG(autorun_stat.st_mode))
         riftwii::wii::logf("sd:/riftwii/autorun.txt ignored: this build has no test driver (only make -f Makefile.wii TEST=1 builds do)\n");
 #endif
     riftwii::wii::EntropyStart();
@@ -342,7 +346,31 @@ int main() {
     riftwii::wii::InitGcRealCards();
     const riftwii::wii::RestartNote restart = riftwii::wii::TakeRestartNote();
     riftwii::wii::CrashInstall();
-    bool sd_mounted = MountStartupSd();
+    const bool from_usb = StartedFromUsb();
+    const bool from_channel = riftwii::wii::StartedByRiftWiiChannel();
+    const bool warm_restart = restart.kind != riftwii::wii::RestartKind::None;
+    riftwii::wii::StartupUsb startup_usb;
+    if (from_usb) {
+        // The forwarder does not create a RestartNote. Reset its IOS USB
+        // service before the first mount, not after settings/catalog reads.
+        // Preserve hardware access only on stock IOS58; do not patch an
+        // inherited custom IOS (including the user's Fakemote IOS246).
+        if ((from_channel || warm_restart) && IOS_GetVersion() == 58 && read32(0x0D800064) == 0xFFFFFFFF)
+            riftwii::wii::keep_hardware_access("USB return");
+        startup_usb = riftwii::wii::MountStartupUsb(from_channel, warm_restart);
+    }
+    const bool sd_mounted = MountStartupSd();
+    if (!from_usb && !sd_mounted) {
+        startup_usb = riftwii::wii::MountStartupUsb(from_channel, warm_restart);
+    }
+    const bool usb_mounted = startup_usb.mounted;
+    const auto primary = riftwii::choose_primary_device(from_usb, sd_mounted, usb_mounted);
+    // A warm restart can begin under the game's cIOS, whose USB driver
+    // libogc cannot use. Retain the intended device until IOS58 is back.
+    riftwii::wii::SelectPrimaryStorage(primary == riftwii::PrimaryDevice::None && (from_usb || from_channel)
+                                         ? riftwii::PrimaryDevice::Usb : primary, sd_mounted);
+    bool app_mounted = sd_mounted || usb_mounted;
+    if (app_mounted) riftwii::wii::CreatePrimaryFolders();
     riftwii::wii::mem::TestBallast();  // test builds only
 
     // Another loader (USB Loader GX) starting a game through RiftWii:
@@ -370,36 +398,39 @@ int main() {
 
     // Home is on screen before the drives are read (a big USB drive takes a
     // while); the disc is only probed when its tile is picked.
-    OpenSessionLog(sd_mounted);
+    OpenSessionLog(app_mounted);
+    riftwii::wii::logf("%s", startup_usb.diagnostics.c_str());
     // A chosen cIOS (fakemote's USB pads) must be running before the pads
     // and the drives are brought up.
     if (restart.kind != riftwii::wii::RestartKind::None) {
         riftwii::wii::logf("Restarted: %s\n", restart.message.c_str());
     }
-    riftwii::wii::StartMenuIos(sd_mounted, restart.kind != riftwii::wii::RestartKind::None,
+    riftwii::wii::StartMenuIos(app_mounted, warm_restart && !startup_usb.ios_refreshed,
                                restart.kind == riftwii::wii::RestartKind::BurnedDisc ? riftwii::wii::BurnedDiscSlot() : 0);
     // A restart mounts the card before the fresh IOS above, under whatever
     // the last run left (a tester got "RiftWii needs an SD card" right
     // after a game failed to start, with the card in). The fresh IOS has
     // let go of it, so once more before saying there is no card.
-    if (!sd_mounted && restart.kind != riftwii::wii::RestartKind::None) {
-        sd_mounted = MountStartupSd();
-        if (sd_mounted) {
+    if (!app_mounted && restart.kind != riftwii::wii::RestartKind::None) {
+        app_mounted = riftwii::wii::MountPrimaryForMenu();
+        if (app_mounted) {
+            riftwii::wii::CreatePrimaryFolders();
             OpenSessionLog(true);
+            riftwii::wii::logf("%s", startup_usb.diagnostics.c_str());
             riftwii::wii::logf("Restarted: %s\n", restart.message.c_str());
             riftwii::wii::logf("SD card: read only after the restart's fresh IOS%d\n", IOS_GetVersion());
             // The menu's saved cIOS (menu_ios.txt) could not be read before.
             riftwii::wii::StartMenuIos(true);
         }
     }
-    if (sd_mounted) riftwii::wii::ChannelInstallerUpdateState();
+    if (app_mounted && !riftwii::wii::PrimaryOnUsb()) riftwii::wii::ChannelInstallerUpdateState();
     // A marker on the card while the Wii Menu's font is read: reading it
     // may open IOS's NAND permission check, which hung consoles before
     // 3.3.3. Found at the next start, the font is skipped, so a console it
     // stops is not stopped at every start.
-    constexpr const char* kFontTry = "sd:/riftwii/menu_font_try.txt";
+    const char* kFontTry = RIFTWII_PATH("riftwii/menu_font_try.txt");
     bool font_tried_before = false;
-    if (riftwii::wii::Settings().menu_font == "wii" && sd_mounted) {
+    if (riftwii::wii::Settings().menu_font == "wii" && app_mounted) {
         if (FILE* f = std::fopen(kFontTry, "rb")) {
             std::fclose(f);
             font_tried_before = true;
@@ -410,14 +441,14 @@ int main() {
     std::string font_why;
     bool font_read = false;
     const auto read_wii_font = [&] {
-        if (sd_mounted) {
+        if (app_mounted) {
             if (FILE* f = std::fopen(kFontTry, "wb")) {
                 std::fputs("RiftWii is reading the Wii Menu's font\n", f);
                 std::fclose(f);
             }
         }
         font = riftwii::wii::LoadWiiMenuFont(font_size, font_why);
-        if (sd_mounted) std::remove(kFontTry);
+        if (app_mounted) std::remove(kFontTry);
         font_read = true;
     };
     // The Wii Menu's font is behind IOS's NAND permission check, which
@@ -430,14 +461,14 @@ int main() {
     // in the menu (a tester's drive went missing). Later starts read the
     // copy. Asked after the IOS above is up, since a restart's reload
     // changes what the menu has. Not when a menu IOS is chosen in Settings.
-    if (sd_mounted && riftwii::wii::Settings().menu_font == "wii" && !font_tried_before &&
+    if (app_mounted && riftwii::wii::Settings().menu_font == "wii" && !font_tried_before &&
         read32(0x0D800064) != 0xFFFFFFFF && !riftwii::wii::running_in_dolphin() &&
         riftwii::wii::MenuCiosSlot() == 0 && riftwii::wii::LoadMenuIos() == 0 && !riftwii::wii::WiiMenuFontCached()) {
         const int slot = riftwii::wii::BurnedDiscSlot();
-        if (slot != 0 && riftwii::wii::StartMenuIos(sd_mounted, false, slot,
+        if (slot != 0 && riftwii::wii::StartMenuIos(app_mounted, false, slot,
                                                     "to copy the Wii Menu's font to the SD card (no hardware access)")) {
             read_wii_font();
-            riftwii::wii::LeaveSessionCios(sd_mounted, "the font is read");
+            riftwii::wii::LeaveSessionCios(app_mounted, "the font is read");
         }
     }
     {
@@ -452,9 +483,9 @@ int main() {
         SetHomeNotice(notice);
     }
     // Settings > Check the GameCube adapter > Check each cIOS.
-    if (restart.kind == riftwii::wii::RestartKind::UsbCheck) SetHomeNotice(riftwii::wii::RunUsbCheck(sd_mounted));
-    if (sd_mounted) riftwii::wii::ImportGameCrash();
-    if (sd_mounted) riftwii::wii::ImportWpadLog();
+    if (restart.kind == riftwii::wii::RestartKind::UsbCheck) SetHomeNotice(riftwii::wii::RunUsbCheck(app_mounted));
+    if (app_mounted && !riftwii::wii::PrimaryOnUsb()) riftwii::wii::ImportGameCrash();
+    if (app_mounted && !riftwii::wii::PrimaryOnUsb()) riftwii::wii::ImportWpadLog();
     FrontendState state;
     // Where the start's time goes (the log's own clock does the rest).
     u64 step = gettime();
@@ -529,13 +560,14 @@ int main() {
     // sd:/riftwii/plugin_test.txt on the card; nothing loads at a plain
     // start. Here, with the menu's crash screen ready, so a plugin that
     // crashes shows it as a player would see it.
-    if (std::string refused; sd_mounted && riftwii::wii::plugin::RunTestSwitch(refused)) {
+    if (std::string refused; app_mounted && riftwii::wii::plugin::RunTestSwitch(refused)) {
         if (!refused.empty()) SetHomeNotice(refused);
         timed("plugin test");
         riftwii::wii::mem::LogUsage("plugin test");
     }
-    if (!sd_mounted) SetNoSdCard(StartedFromUsb());
-    const int action = MainMenu(sd_mounted ? MENU_SOURCE : MENU_NEEDS_SD, state);
+    app_mounted = riftwii::wii::PrimaryStorageMounted();
+    if (!app_mounted) SetNoSdCard(StartedFromUsb() || !sd_mounted);
+    const int action = MainMenu(app_mounted ? MENU_SOURCE : MENU_NEEDS_SD, state);
     MenuWatchdogStop();
     // The card goes to the launch from here: the full font's file is let go
     // and stays closed (the glyphs drawn so far stay cached).
@@ -585,7 +617,7 @@ int main() {
         // Damaged while the menu ran: a launch would only fail later, at
         // the cIOS reload, blaming that step (a tester's Wii U tried three
         // slots this way). A fresh start of RiftWii has a whole heap.
-        riftwii::wii::LogOpen("sd:/riftwii/boot.log");
+        riftwii::wii::LogOpen(RIFTWII_PATH("riftwii/boot.log"));
         riftwii::wii::logf("RiftWii %s: %s %s\n", RIFTWII_VERSION, action == MENU_BOOT ? "boot" : "launch",
                            state.game_id.c_str());
         error = "RiftWii's memory was damaged while the menu was open (the details are in session.log); "
@@ -593,7 +625,7 @@ int main() {
         riftwii::wii::logf("FAILED: %s\n", error.c_str());
         OfferRestart(error);
     } else if (action == MENU_LAUNCH) {
-        riftwii::wii::LogOpen("sd:/riftwii/boot.log");
+        riftwii::wii::LogOpen(RIFTWII_PATH("riftwii/boot.log"));
         riftwii::wii::logf("RiftWii %s: launch %s with packages\n", RIFTWII_VERSION, state.game_id.c_str());
         riftwii::wii::logf("Controllers: %s\n", controllers.c_str());
         riftwii::wii::LogDeclinedUpdate();
@@ -606,33 +638,33 @@ int main() {
         });
         if (!booted) {
             if (riftwii::wii::reload_terminal_failure()) riftwii::wii::halt_after_terminal_reload();
-            riftwii::wii::LogOpen("sd:/riftwii/boot.log", true);  // boot_game closed it and remounted the card
+            riftwii::wii::LogOpen(RIFTWII_PATH("riftwii/boot.log"), true);  // boot_game closed it and remounted the card
             riftwii::wii::logf("FAILED: %s\n", error.c_str());
             OfferRestart(error);
         }
     } else if (action == MENU_BOOT) {
-        riftwii::wii::LogOpen("sd:/riftwii/boot.log");
+        riftwii::wii::LogOpen(RIFTWII_PATH("riftwii/boot.log"));
         riftwii::wii::logf("RiftWii %s: boot %s\n", RIFTWII_VERSION, source.kind == riftwii::wii::LaunchSource::Kind::Usb ? "USB" : source.kind == riftwii::wii::LaunchSource::Kind::Sd ? "SD" : "disc");
         riftwii::wii::logf("Controllers: %s\n", controllers.c_str());
         riftwii::wii::LogDeclinedUpdate();
         if (riftwii::wii::GuiScriptFailLaunch()) error = "a test failure the guiscript asked for";
         if (!error.empty() || !riftwii::wii::mem::GuardLaunchMemory(error, [&] { return riftwii::wii::RunBoot(true, error, source); })) {
             if (riftwii::wii::reload_terminal_failure()) riftwii::wii::halt_after_terminal_reload();
-            riftwii::wii::LogOpen("sd:/riftwii/boot.log", true);  // boot_game closed it and remounted the card
+            riftwii::wii::LogOpen(RIFTWII_PATH("riftwii/boot.log"), true);  // boot_game closed it and remounted the card
             riftwii::wii::logf("FAILED: %s\n", error.c_str());
             OfferRestart(error);
         }
     } else if (action == MENU_PLAY_CHANNEL) {
         // A WiiWare or Virtual Console game, on the same launch screen as a
         // disc game. StartChannel returns only by leaving RiftWii.
-        riftwii::wii::LogOpen("sd:/riftwii/boot.log");
+        riftwii::wii::LogOpen(RIFTWII_PATH("riftwii/boot.log"));
         riftwii::wii::logf("RiftWii %s: launch %s (Wii channel)\n", RIFTWII_VERSION, state.game_id.c_str());
         riftwii::wii::logf("Controllers: %s\n", controllers.c_str());
         riftwii::wii::LogDeclinedUpdate();
         StartChannel(riftwii::wii::ChannelToStart());
     } else if (action == MENU_HOMEBREW) {
         const riftwii::wii::HomebrewApp app = riftwii::wii::HomebrewToStart();
-        riftwii::wii::LogOpen("sd:/riftwii/boot.log");
+        riftwii::wii::LogOpen(RIFTWII_PATH("riftwii/boot.log"));
         riftwii::wii::logf("RiftWii %s: start homebrew %s (%s)\n", RIFTWII_VERSION, app.name.c_str(), app.program.c_str());
         riftwii::wii::LogDeclinedUpdate();
         std::string error;
@@ -651,11 +683,11 @@ int main() {
         riftwii::wii::WaitForExit();
         std::exit(0);
     } else if (action == MENU_DUMP) {
-        riftwii::wii::LogOpen("sd:/riftwii/dump.log");
+        riftwii::wii::LogOpen(RIFTWII_PATH("riftwii/dump.log"));
         riftwii::wii::logf("RiftWii: dump test files\n");
         riftwii::wii::GuiScriptFinalShot(Menu_CurrentXfb(), Menu_XfbWidth(), Menu_XfbHeight());
         const std::vector<std::string> files = {"/opening.bnr"};
-        if (riftwii::wii::RunDump(files, "sd:/riftwii/dump", error)) {
+        if (riftwii::wii::RunDump(files, RIFTWII_PATH("riftwii/dump"), error)) {
             riftwii::wii::logf("Done.\n");
         } else {
             riftwii::wii::logf("FAILED: %s\n", error.c_str());

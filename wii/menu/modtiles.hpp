@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include "riftwii/storagepaths.hpp"
+
 #include <string>
 
 #include "frontend.hpp"
@@ -12,7 +14,7 @@
 // choices in sd:/riftwii/choices/<key>.txt.
 namespace riftwii::wii {
 
-constexpr const char* kProfilesPath = "sd:/riftwii/profiles.txt";
+inline const char* kProfilesPath() { return RIFTWII_PATH("riftwii/profiles.txt"); }
 
 // The list, read from the card once.
 ProfileList& Profiles();

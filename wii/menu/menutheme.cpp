@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "riftwii/storagepaths.hpp"
 #include "menutheme.hpp"
 
 #include <dirent.h>
@@ -15,7 +16,7 @@
 namespace riftwii::wii {
 namespace {
 
-constexpr const char* kThemesDir = "sd:/riftwii/themes/";
+const char* kThemesDir() { return RIFTWII_PATH("riftwii/themes/"); }
 constexpr long kMaxIni = 64 * 1024;
 constexpr long kMaxPng = 2 * 1024 * 1024;
 
@@ -54,12 +55,12 @@ void LoadMenuTheme() {
         // Built in; its song and its soyjak come in themes/TheTime (no
         // theme.ini there, so the Theme row never lists it).
         g_theme = time_theme();
-        const std::string dir = std::string(kThemesDir) + "TheTime/";
+        const std::string dir = std::string(kThemesDir()) + "TheTime/";
         if (Exists(dir)) g_dir = dir;
         logf("Theme: %s (built in%s)\n", g_theme.name.c_str(), g_dir.empty() ? ", no themes/TheTime" : "");
         return;
     }
-    const std::string dir = std::string(kThemesDir) + folder + "/";
+    const std::string dir = std::string(kThemesDir()) + folder + "/";
     std::string text;
     if (!ReadFile(dir + "theme.ini", kMaxIni, text)) {
         logf("Theme: %stheme.ini is missing or unreadable; the default look stays\n", dir.c_str());
@@ -78,13 +79,13 @@ const std::string& MenuThemeDir() { return g_dir; }
 
 std::vector<ThemeEntry> ListMenuThemes() {
     std::vector<ThemeEntry> out;
-    DIR* d = opendir("sd:/riftwii/themes");
+    DIR* d = opendir(RIFTWII_PATH("riftwii/themes"));
     if (!d) return out;
     while (dirent* e = readdir(d)) {
         const std::string folder = e->d_name;
         if (folder.empty() || folder[0] == '.' || folder.size() > 64 || folder == "default") continue;
         std::string text;
-        if (!ReadFile(std::string(kThemesDir) + folder + "/theme.ini", kMaxIni, text)) continue;
+        if (!ReadFile(std::string(kThemesDir()) + folder + "/theme.ini", kMaxIni, text)) continue;
         std::vector<std::string> notes;
         const Theme t = parse_theme(text, notes);
         out.push_back({folder, t.name.empty() ? folder : t.name});

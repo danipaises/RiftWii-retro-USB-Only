@@ -7,14 +7,28 @@
 
 #include <gccore.h>
 #include <ogc/ipc.h>
+#ifdef GEKKO
+#include <ogc/lwp_watchdog.h>
+#endif
 
 #include <cstdio>
 #include <cstring>
 
-extern "C" void udelay(int us);
+#ifndef GEKKO
+extern "C" void udelay(int us);  // the host test's clock
+#endif
 
 namespace riftwii::wii::sdio {
 namespace {
+
+void card_delay(unsigned microseconds) {
+#ifdef GEKKO
+    const u64 start = gettime();
+    while (diff_usec(start, gettime()) < microseconds) {}
+#else
+    udelay(static_cast<int>(microseconds));
+#endif
+}
 
 // wiibrew /dev/sdio/slot0
 constexpr std::int32_t kIoctlWriteHcr = 0x01;
@@ -151,7 +165,7 @@ bool wait_hcr(const Card& card, std::uint32_t reg, std::uint32_t size, std::uint
         std::uint32_t value = 0;
         if (!read_hcr(card, reg, size, value, error)) return false;
         if ((value & mask) == expected) return true;
-        udelay(1000);
+        card_delay(1000);
     }
     error = "sdio: host controller did not become ready after 100 checks";
     return false;
@@ -220,7 +234,7 @@ bool initialize_card(Card& card, std::string& error) {
             ready = true;
             break;
         }
-        udelay(10000);
+        card_delay(10000);
     }
     if (!ready) {
         error = "sdio: the card did not finish SD v2 power-up after 100 checks";

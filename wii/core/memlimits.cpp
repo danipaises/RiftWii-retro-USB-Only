@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "riftwii/storagepaths.hpp"
 #include "memlimits.hpp"
 
 #include <gccore.h>
@@ -64,7 +65,7 @@ void* g_pieces[64];
 
 void TestBallast() {
 #ifdef RIFTWII_TEST_LIMITS
-    FILE* f = std::fopen("sd:/riftwii/test_limits.txt", "r");
+    FILE* f = std::fopen(RIFTWII_PATH("riftwii/test_limits.txt"), "r");
     if (!f) return;
     unsigned ballast = 0, chunk = 256, pieces = 0;
     char line[96];

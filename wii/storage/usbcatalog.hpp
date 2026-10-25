@@ -84,6 +84,9 @@ using UsbCatalog = ImageCatalog;
 // Entries that cannot be proven to be Wii images are skipped with their first
 // failure retained in status. The USB volume must expose 512-byte sectors.
 bool scan_usb_games(UsbCatalog& out, std::string& error);
+// Mount the application FAT volume at startup without loading settings
+// before the primary storage device has been selected. No game scan.
+bool mount_usb_app(std::string& error);
 // Waits up to `seconds` for USB to list a drive. A launch started at once
 // by another loader (a WiiFlow plugin) looks before the drive it just let
 // go of is listed again under the new IOS; the menu reads drives later.

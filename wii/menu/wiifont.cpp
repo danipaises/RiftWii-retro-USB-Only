@@ -4,6 +4,7 @@
 // SPDX-FileCopyrightText: 2012-2025 blackb0x
 // SPDX-FileCopyrightText: USB Loader GX contributors <https://github.com/wiidev/usbloadergx>
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "riftwii/storagepaths.hpp"
 #include "wiifont.hpp"
 
 #include <gccore.h>
@@ -73,10 +74,10 @@ u8* read_nand(const char* path, bool keep, std::size_t& size, std::string& why) 
 }
 
 // The SD card's copy of the shared contents the fonts are in.
-constexpr const char* kCacheDir = "sd:/riftwii/fontcache";
-constexpr const char* kCacheFont = "sd:/riftwii/fontcache/font.app";
-constexpr const char* kCacheKorean = "sd:/riftwii/fontcache/font-korean.app";
-constexpr const char* kCacheBitmap = "sd:/riftwii/fontcache/bitmap.app";
+const char* kCacheDir() { return RIFTWII_PATH("riftwii/fontcache"); }
+const char* kCacheFont() { return RIFTWII_PATH("riftwii/fontcache/font.app"); }
+const char* kCacheKorean() { return RIFTWII_PATH("riftwii/fontcache/font-korean.app"); }
+const char* kCacheBitmap() { return RIFTWII_PATH("riftwii/fontcache/bitmap.app"); }
 
 // A file of the copy into MEM2 for the rest of the menu phase.
 u8* read_cache(const char* path, std::size_t& size) {
@@ -98,7 +99,7 @@ u8* read_cache(const char* path, std::size_t& size) {
 // A content read from the NAND into the copy: written whole beside it,
 // then renamed, so a start that stops halfway leaves no broken copy.
 void save_cache(const char* path, const u8* data, std::size_t size) {
-    mkdir(kCacheDir, 0777);
+    mkdir(kCacheDir(), 0777);
     const std::string temp = std::string(path) + ".part";
     FILE* f = std::fopen(temp.c_str(), "wb");
     if (!f) return;
@@ -113,9 +114,9 @@ void save_cache(const char* path, const u8* data, std::size_t size) {
 }
 
 void drop_cache() {
-    std::remove(kCacheFont);
-    std::remove(kCacheKorean);
-    std::remove(kCacheBitmap);
+    std::remove(kCacheFont());
+    std::remove(kCacheKorean());
+    std::remove(kCacheBitmap());
 }
 
 // The Wii Menu's bitmap font, once read: FreeTypeGX takes its glyphs from it.
@@ -166,16 +167,16 @@ void load_bitmap_font(const std::uint8_t* map, std::size_t map_size) {
         logf("Menu font: the bitmap font was not read (%s)\n", why.c_str());
         return;
     }
-    if (use_bitmap_app(app, size, path)) save_cache(kCacheBitmap, app, size);
+    if (use_bitmap_app(app, size, path)) save_cache(kCacheBitmap(), app, size);
 }
 
 // The copy on the SD card, when there is one that reads.
 u8* load_cached(bool korean, std::size_t& size) {
     std::size_t app_size = 0, at = 0;
-    const char* path = korean ? kCacheKorean : kCacheFont;
+    const char* path = korean ? kCacheKorean() : kCacheFont();
     u8* app = read_cache(path, app_size);
     if (!app) {
-        path = korean ? kCacheFont : kCacheKorean;
+        path = korean ? kCacheFont() : kCacheKorean();
         app = read_cache(path, app_size);
     }
     if (!app) return nullptr;
@@ -186,7 +187,7 @@ u8* load_cached(bool korean, std::size_t& size) {
     }
     logf("Menu font: the SD card's copy (%s)\n", path);
     std::size_t bitmap_size = 0;
-    if (u8* bitmap = read_cache(kCacheBitmap, bitmap_size)) use_bitmap_app(bitmap, bitmap_size, kCacheBitmap);
+    if (u8* bitmap = read_cache(kCacheBitmap(), bitmap_size)) use_bitmap_app(bitmap, bitmap_size, kCacheBitmap());
     return app + at;
 }
 
@@ -194,7 +195,7 @@ u8* load_cached(bool korean, std::size_t& size) {
 
 bool WiiMenuFontCached() {
     struct stat st;
-    return stat(kCacheFont, &st) == 0 || stat(kCacheKorean, &st) == 0;
+    return stat(kCacheFont(), &st) == 0 || stat(kCacheKorean(), &st) == 0;
 }
 
 u8* LoadWiiMenuFont(std::size_t& size, std::string& why) {
@@ -230,7 +231,7 @@ u8* LoadWiiMenuFont(std::size_t& size, std::string& why) {
             if (u8* app = read_nand(path, true, app_size, why)) {
                 if (u8_find_font(app, app_size, at, size)) {
                     font = app + at;
-                    save_cache(korean_font ? kCacheKorean : kCacheFont, app, app_size);
+                    save_cache(korean_font ? kCacheKorean() : kCacheFont(), app, app_size);
                 } else
                     why = std::string(path) + " holds no font";
             }

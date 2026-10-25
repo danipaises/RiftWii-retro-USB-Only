@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-FileCopyrightText: USB Loader GX contributors <https://github.com/wiidev/usbloadergx>
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "riftwii/storagepaths.hpp"
 #include "autorun.hpp"
 #include "launchrun.hpp"
 #include "launchsession.hpp"
@@ -179,12 +180,12 @@ bool LoadSdVirtualFile(const OpenedPartition& partition, const std::string& disc
 
 bool AutorunPresent() {
     struct stat st;
-    return stat(kAutorunPath, &st) == 0 && S_ISREG(st.st_mode);
+    return stat(kAutorunPath(), &st) == 0 && S_ISREG(st.st_mode);
 }
 
 void RunAutorun() {
-    LogOpen(kAutorunLogPath);
-    logf("RiftWii autorun: %s\n", kAutorunPath);
+    LogOpen(kAutorunLogPath());
+    logf("RiftWii autorun: %s\n", kAutorunPath());
     {
         int probe_local = 0;
         logf("loader: stack near %p, arena1 %p-%p, arena2 %p-%p\n", static_cast<void*>(&probe_local),
@@ -198,13 +199,13 @@ void RunAutorun() {
         // SD FILE across a USB IOS reload. Lines end at '\n'; a last line
         // without one counts too.
         std::string script;
-        ReadWholeFile(kAutorunPath, script);
+        ReadWholeFile(kAutorunPath(), script);
         LineReader lines(script);
         std::string loaded;
         while (lines.next(loaded)) script_lines.push_back(std::move(loaded));
     }
     LaunchSource source;
-    Session s(source, kAutorunLogPath);
+    Session s(source, kAutorunLogPath());
     bool allow_fallback = true;
     bool install_resident = false;
     std::vector<MemReplacement> replacements;
@@ -245,7 +246,7 @@ void RunAutorun() {
                 UsbGame* found=nullptr; for (UsbGame& g:catalog.games) if (g.path==wanted || g.id==wanted) { found=&g; break; }
                 if (!found) { ok=false; error="USB image '"+wanted+"' was not found in the USB catalog"; }
                 else if (!check_image_game(*found, error)) ok=false;
-                else { source=LaunchSource{}; source.kind=LaunchSource::Kind::Usb; source.game=*found; source.cios_slot=slot; s=Session(source, kAutorunLogPath); }
+                else { source=LaunchSource{}; source.kind=LaunchSource::Kind::Usb; source.game=*found; source.cios_slot=slot; s=Session(source, kAutorunLogPath()); }
             }
         } else if (cmd == "sd") {
             std::string wanted; int slot=0; words.next(wanted); words.next(slot);
@@ -255,7 +256,7 @@ void RunAutorun() {
                 ImageGame* found=nullptr; for (ImageGame& g:catalog.games) if (g.path==wanted || g.id==wanted) { found=&g; break; }
                 if (!found) { ok=false; error="SD image '"+wanted+"' was not found in the SD catalog"; }
                 else if (!check_image_game(*found, error)) ok=false;
-                else { source=LaunchSource{}; source.kind=LaunchSource::Kind::Sd; source.game=*found; source.cios_slot=slot; s=Session(source, kAutorunLogPath); }
+                else { source=LaunchSource{}; source.kind=LaunchSource::Kind::Sd; source.game=*found; source.cios_slot=slot; s=Session(source, kAutorunLogPath()); }
             }
         } else if (cmd == "rvz") {
             // Dolphin only: boot the RVZ's stub as the disc and read the
@@ -264,7 +265,7 @@ void RunAutorun() {
             if (path.empty()) { ok=false; error="rvz needs an sd:/ path"; }
             else if (!serve_disc_from_rvz(path, error)) ok=false;
         } else if (cmd == "disc") {
-            source=LaunchSource{}; s=Session(source, kAutorunLogPath);
+            source=LaunchSource{}; s=Session(source, kAutorunLogPath());
         } else if (cmd == "netscan") {
             // The network packs' list, as the menu's scan fetches it.
             const std::string line = RefreshNetworkPacks(nullptr);
@@ -282,7 +283,7 @@ void RunAutorun() {
         } else if (cmd == "meta") {
             std::string dir;
             words.next(dir);
-            if (dir.empty()) dir = "sd:/riftwii/dump";
+            if (dir.empty()) dir = RIFTWII_PATH("riftwii/dump");
             ok = s.ensure_layout(error) && dump_metadata(s.probe, s.partition, dir, error);
         } else if (cmd == "dump") {
             std::string disc_path, sd_path;
@@ -292,13 +293,13 @@ void RunAutorun() {
                 ok = false;
                 error = "dump needs a disc path";
             } else {
-                if (sd_path.empty()) sd_path = "sd:/riftwii/dump/" + basename_of(disc_path);
+                if (sd_path.empty()) sd_path = RIFTWII_PATH("riftwii/dump/") + basename_of(disc_path);
                 ok = s.ensure_layout(error) && dump_file(s.partition, disc_path, sd_path, error);
             }
         } else if (cmd == "dol") {
             std::string sd_path;
             words.next(sd_path);
-            if (sd_path.empty()) sd_path = "sd:/riftwii/dump/main.dol";
+            if (sd_path.empty()) sd_path = RIFTWII_PATH("riftwii/dump/main.dol");
             ok = s.ensure_layout(error) && dump_dol(s.partition, sd_path, error);
         } else if (cmd == "nofallback") {
             allow_fallback = false;
@@ -435,7 +436,7 @@ void RunAutorun() {
                 state.game_revision = source.game.revision;
                 state.game_disc_number = source.game.disc_number;
                 state.disc_status = std::string(source.kind == LaunchSource::Kind::Usb ? "USB: " : "SD: ") + source.game.id + "  " + source.game.title;
-                state.choices_path = std::string(kChoicesDir) + "/" + source.game.id + ".txt";
+                state.choices_path = std::string(kChoicesDir()) + "/" + source.game.id + ".txt";
             } else IdentifyDisc(state);
             logf("  %s\n", state.disc_status.c_str());
             // As the headless launch: a scan that ran out of memory keeps only
@@ -469,7 +470,7 @@ void RunAutorun() {
                 logf("  nothing enabled and NAND saves selected: booting as is\n");
                 ok = mem::GuardLaunchMemory(error, [&] { return RunBoot(allow_fallback, error, source); });
                 if (reload_terminal_failure()) halt_after_terminal_reload();
-                LogOpen(kAutorunLogPath, true);
+                LogOpen(kAutorunLogPath(), true);
             } else {
                 logf(selections.empty() ? "  no packages enabled: applying selected Save Mode\n"
                                         : "launch: handing over to the game\n");
@@ -477,7 +478,7 @@ void RunAutorun() {
                     return RunLaunch(selections, error, source, state.model.save_mode, state.game_id);
                 });
                 if (reload_terminal_failure()) halt_after_terminal_reload();
-                LogOpen(kAutorunLogPath, true);
+                LogOpen(kAutorunLogPath(), true);
             }
         } else if (cmd == "boot") {
             BootOptions options;
@@ -503,7 +504,7 @@ void RunAutorun() {
                 logf("boot: handing over to the game\n");
                 ok = boot_game(s.probe, std::move(options), error);  // returns only on failure, with the card remounted
                 if (reload_terminal_failure()) halt_after_terminal_reload();
-                LogOpen(kAutorunLogPath, true);
+                LogOpen(kAutorunLogPath(), true);
             }
         } else {
             ok = false;

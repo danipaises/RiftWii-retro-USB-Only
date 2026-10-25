@@ -1,5 +1,6 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "riftwii/storagepaths.hpp"
 #include "online.hpp"
 
 #include <network.h>
@@ -49,14 +50,14 @@ constexpr const char* kTitlesUrl = "http://www.gametdb.com/wiitdb.txt?LANG=";
 constexpr const char* kCheatsUrl = "https://codes.rc24.xyz/txt.php?txt=";
 constexpr std::time_t kWeek = 7 * 24 * 60 * 60;
 constexpr const char* kLatestApi = "https://api.github.com/repos/KakarottoCake/Riftwii/releases/latest";
-constexpr const char* kUpdateNote = "sd:/riftwii/update.txt";
+const char* kUpdateNote() { return RIFTWII_PATH("riftwii/update.txt"); }
 constexpr const char* kReleaseByTagApi = "https://api.github.com/repos/KakarottoCake/Riftwii/releases/tags/";
 // The release's themes and channel installer, for the in-app update.
 constexpr const char* kUpdatePackAsset = "riftwii-update.pack";
 // The version whose themes are on the card (ApplyThemePack).
-constexpr const char* kThemesDone = "sd:/riftwii/themes_updated.txt";
+const char* kThemesDone() { return RIFTWII_PATH("riftwii/themes_updated.txt"); }
 // The rest of the zip's sd:/apps (the channel installer), the same way.
-constexpr const char* kAppsDone = "sd:/riftwii/apps_updated.txt";
+const char* kAppsDone() { return RIFTWII_PATH("riftwii/apps_updated.txt"); }
 
 // Hosts that could not be connected to this session: asked again, they
 // fail at once, so a server the network cannot reach (GameTDB, for one
@@ -278,7 +279,7 @@ bool HttpPost(const std::string& url, const std::string& content_type, const std
     return true;
 }
 
-std::string TitlesPath(const std::string& lang) { return "sd:/riftwii/titles-" + lang + ".txt"; }
+std::string TitlesPath(const std::string& lang) { return RIFTWII_PATH("riftwii/titles-") + lang + ".txt"; }
 
 bool UpdateTitles(const std::string& lang, bool force, std::string& error) {
     const std::string path = TitlesPath(lang);
@@ -294,7 +295,7 @@ bool UpdateTitles(const std::string& lang, bool force, std::string& error) {
         error = "GameTDB sent something that is not a title list";
         return false;
     }
-    mkdir("sd:/riftwii", 0777);
+    mkdir(RIFTWII_PATH("riftwii"), 0777);
     if (!write_file(path, body, error)) return false;
     logf("Titles: %u bytes of game names (%s) from GameTDB\n", static_cast<unsigned>(body.size()), gametdb_lang.c_str());
     return true;
@@ -316,7 +317,7 @@ struct UpdateNote {
 
 UpdateNote ReadUpdateNote() {
     UpdateNote note;
-    if (FILE* f = std::fopen(kUpdateNote, "rb")) {
+    if (FILE* f = std::fopen(kUpdateNote(), "rb")) {
         char line[1024];
         while (std::fgets(line, sizeof(line), f)) {
             std::string text(line);
@@ -337,7 +338,7 @@ UpdateNote ReadUpdateNote() {
 }
 
 void WriteUpdateNote(const UpdateNote& note) {
-    if (FILE* f = std::fopen(kUpdateNote, "wb")) {
+    if (FILE* f = std::fopen(kUpdateNote(), "wb")) {
         std::fprintf(f, "checked %lld\nlatest %s\n", static_cast<long long>(note.checked), note.latest.c_str());
         if (!note.dol.url.empty()) {
             std::fprintf(f, "dol %s\nsha256 %s\nsize %llu\n", note.dol.url.c_str(), note.dol.sha256.c_str(),
@@ -371,7 +372,7 @@ std::string RunningDolPath() {
         if (path.rfind("sd:/", 0) == 0 && EndsWithDol(path) && stat(path.c_str(), &st) == 0) return path;
     }
     struct stat st;
-    if (stat("sd:/apps/riftwii/boot.dol", &st) == 0) return "sd:/apps/riftwii/boot.dol";
+    if (stat(RIFTWII_PATH("apps/riftwii/boot.dol"), &st) == 0) return RIFTWII_PATH("apps/riftwii/boot.dol");
     return "";
 }
 
@@ -491,7 +492,7 @@ std::vector<std::pair<std::string, std::string>> g_retired_themes;
 volatile bool g_retired_ready = false;
 struct PackKind {
     const char* header;
-    const char* done;  // holds the version the card has
+    const char* (*done)();  // resolved after primary storage selection
     const char* label;  // for the log
     std::size_t from = 0, to = 0;  // its part of g_update (empty: nothing to write)
     bool none = false;  // the release has no pack: nothing to wait for
@@ -518,8 +519,8 @@ void FetchPacks() {
     }
     const UpdateNote note = ReadUpdateNote();
     if (note.installed.empty() || compare_versions(note.installed, RIFTWII_VERSION) != 0) return;
-    const bool themes = FirstLine(kThemesDone) != RIFTWII_VERSION;
-    const bool apps = FirstLine(kAppsDone) != RIFTWII_VERSION;
+    const bool themes = FirstLine(kThemesDone()) != RIFTWII_VERSION;
+    const bool apps = FirstLine(kAppsDone()) != RIFTWII_VERSION;
     if (!themes && !apps) return;
     std::string json;
     {
@@ -656,7 +657,7 @@ void ApplyPack(PackKind& k) {
     const bool themes = &k == &g_themes;
     if (k.none) {
         k.none = false;
-        MarkDone(k.done);
+        MarkDone(k.done());
     }
     if (k.to <= k.from || k.to > g_update.size()) return;
     const std::uint8_t* const bytes = g_update.data() + k.from;
@@ -666,12 +667,12 @@ void ApplyPack(PackKind& k) {
     std::string error;
     if (!parse_theme_pack(bytes, size, pack, error, k.header)) {
         logf("%s: %s: %s\n", k.label, kUpdatePackAsset, error.c_str());
-        MarkDone(k.done);
+        MarkDone(k.done());
         return;
     }
-    const std::string root = themes ? "sd:/riftwii/themes/" : "sd:/apps/";
-    mkdir("sd:/riftwii", 0777);
-    mkdir(themes ? "sd:/riftwii/themes" : "sd:/apps", 0777);
+    const std::string root = themes ? RIFTWII_PATH("riftwii/themes/") : "sd:/apps/";
+    mkdir(RIFTWII_PATH("riftwii"), 0777);
+    mkdir(themes ? RIFTWII_PATH("riftwii/themes") : "sd:/apps", 0777);
     unsigned written = 0, same = 0, failed = 0;
     // The menu may be reading glyphs from font.ttf, which may be rewritten.
     std::optional<fullfont::ClosedHold> font_hold;
@@ -710,7 +711,7 @@ void ApplyPack(PackKind& k) {
     // This version's plugins are all there now: the ones from before the
     // update are never loaded again, so they go.
     if (!themes && !failed) plugin::RemoveOtherVersions();
-    if (!failed) MarkDone(k.done);
+    if (!failed) MarkDone(k.done());
 }
 
 void RunStartCheck() {
@@ -755,8 +756,8 @@ bool TakeUpdateCheck(bool& ok, std::string& latest, bool& newer, std::string& er
     // The themes and apps of the version just installed, unless a newer one
     // is offered now (its own update brings them).
     const UpdateNote note = ReadUpdateNote();
-    if (!(ok && newer) && !note.installed.empty() && compare_versions(note.installed, RIFTWII_VERSION) == 0 &&
-        (FirstLine(kThemesDone) != RIFTWII_VERSION || FirstLine(kAppsDone) != RIFTWII_VERSION)) {
+    if (!PrimaryOnUsb() && !(ok && newer) && !note.installed.empty() && compare_versions(note.installed, RIFTWII_VERSION) == 0 &&
+        (FirstLine(kThemesDone()) != RIFTWII_VERSION || FirstLine(kAppsDone()) != RIFTWII_VERSION)) {
         g_packs_job = true;
         if (!NetRunInBackground(RunUpdatePacks, true)) g_packs_job = false;
     }
@@ -780,7 +781,7 @@ void TakeUpdatePacks() {
 bool AppsPackPending() {
     const UpdateNote note = ReadUpdateNote();
     return Settings().online && !note.installed.empty() &&
-           compare_versions(note.installed, RIFTWII_VERSION) == 0 && FirstLine(kAppsDone) != RIFTWII_VERSION;
+           compare_versions(note.installed, RIFTWII_VERSION) == 0 && FirstLine(kAppsDone()) != RIFTWII_VERSION;
 }
 
 namespace {
@@ -914,6 +915,11 @@ bool WriteUpdatePlugins(const UpdateNote& note, const std::string& latest, const
 
 bool InstallUpdate(const std::string& latest, std::string& where, std::string& error,
                    const std::function<void(const UpdateProgress&)>& progress) {
+    if (PrimaryOnUsb()) {
+        where.clear();
+        error = "This USB development build must be updated manually. An official update would remove USB-only support.";
+        return false;
+    }
     UpdateNote note = ReadUpdateNote();
     if (note.latest != latest || note.dol.url.empty()) {
         error = "release " + latest + " has no riftwii.dol attached";
@@ -1025,9 +1031,9 @@ bool InstallUpdate(const std::string& latest, std::string& where, std::string& e
     return true;
 }
 
-std::string CheatPath(const std::string& game_id) { return std::string(kCheatDir) + "/" + game_id + ".txt"; }
+std::string CheatPath(const std::string& game_id) { return std::string(kCheatDir()) + "/" + game_id + ".txt"; }
 
-std::string CheatSourcePath(const std::string& game_id) { return std::string(kCheatDir) + "/" + game_id + ".source"; }
+std::string CheatSourcePath(const std::string& game_id) { return std::string(kCheatDir()) + "/" + game_id + ".source"; }
 
 bool CheatsFromGameHacking(const std::string& game_id) {
     std::string text, zip;
@@ -1128,8 +1134,8 @@ bool DownloadCheats(const std::string& game_id, std::string& error, const std::s
         }
     }
     if (!have) return false;
-    mkdir("sd:/riftwii", 0777);
-    mkdir(kCheatDir, 0777);
+    mkdir(RIFTWII_PATH("riftwii"), 0777);
+    mkdir(kCheatDir(), 0777);
     // Cheats added by hand and values filled in survive the download (a
     // tester lost theirs to one).
     std::string old = read_cheat_file(game_id);

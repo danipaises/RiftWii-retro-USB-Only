@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
 
+#include "riftwii/storagepaths.hpp"
+
 #include <cstddef>
 #include <functional>
 #include <string>
@@ -21,7 +23,7 @@
 // other pack; saves stay in the cache.
 namespace riftwii::wii {
 
-constexpr const char* kNetCacheDir = "sd:/riftwii/riifs";
+inline const char* kNetCacheDir() { return RIFTWII_PATH("riftwii/riifs"); }
 
 // A pack XML's text, from the SD card or the USB drive ("usb:/...", read
 // through the menu's mount of it); empty when it cannot be read.
