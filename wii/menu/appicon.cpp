@@ -89,7 +89,7 @@ void LoadAppIcon(const std::string& folder) {
     std::vector<std::uint8_t> png, rgba;
     int w = 0, h = 0;
     std::string error;
-    if (!read_png(folder + "/icon.png", png) || !DecodePngRgba(png, rgba, w, h, error)) {
+    if (!read_png(folder.compare(0, 11, "usb:/retro/") == 0 ? "usb:/retro/covers/" + folder.substr(11) + ".png" : folder + "/icon.png", png) || !DecodePngRgba(png, rgba, w, h, error)) {
         if (!error.empty()) logf("Homebrew: %s/icon.png: %s\n", folder.c_str(), error.c_str());
         return;
     }

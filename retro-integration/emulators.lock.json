@@ -1,0 +1,36 @@
+[
+  {
+    "repo": "dborth/fceugx",
+    "tag": "4.0.3",
+    "commit": "afb7097bd7ce22b4e959699dc76a568ba31e05a2",
+    "asset": "https://github.com/dborth/fceugx/releases/download/4.0.3/FCEUltraGX-4.0.3-Wii.zip",
+    "sha256": "ab165ba029c9dbe26e15eff7d92af2217257ff52eb55df2afc4549d02a5e9f52"
+  },
+  {
+    "repo": "dborth/snes9xgx",
+    "tag": "5.0.4",
+    "commit": "3cf52bd04eed33c8f3428e675017ebfc18f107ba",
+    "asset": "https://github.com/dborth/snes9xgx/releases/download/5.0.4/Snes9xGX-5.0.4-Wii.zip",
+    "sha256": "16aaf66490369adddaa8151b0534046e1c2105a073ae4a608a978f557021226f"
+  },
+  {
+    "repo": "dborth/vbagx",
+    "tag": "3.0.4",
+    "commit": "5460f1f6c993b5dac707fc70e6f335bba0ba6d94",
+    "asset": "https://github.com/dborth/vbagx/releases/download/3.0.4/VisualBoyAdvanceGX-3.0.4-Wii.zip",
+    "sha256": "f5e9a4df170b4ee6fd1d5cfa783a48986c184dedd7ca7e5fca6731705fd9b363"
+  },
+  {
+    "repo": "emukidid/Wii64",
+    "tag": "1.5.0",
+    "commit": "a96d9758a1d15a72577a5546c66068f627ea21bd",
+    "asset": "https://github.com/emukidid/Wii64/releases/download/1.5.0/wii64-1.5.0.7z",
+    "sha256": "a6b0efe2db9007180cd2846298fcc6bdf1c34aeb035d423c30f6a99c3cb79b83"
+  },
+  {
+    "repo": "ekeeke/Genesis-Plus-GX",
+    "commit": "49c584764893b0505ac7f768a754f97330fa4392",
+    "asset": "https://raw.githubusercontent.com/ekeeke/Genesis-Plus-GX/49c584764893b0505ac7f768a754f97330fa4392/builds/genplus_wii.dol",
+    "sha256": "12236514a25b438af58411b4bb18490df8a7f13ec96987df2e47a8cba58933c6"
+  }
+]

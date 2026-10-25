@@ -19,6 +19,7 @@ struct HomebrewApp {
     std::string description;
     std::vector<std::string> arguments;
     std::string problem;
+    std::string retro_rom;
 };
 
 const std::vector<HomebrewApp>& HomebrewApps();

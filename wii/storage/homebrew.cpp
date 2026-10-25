@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "homebrew.hpp"
+#include "retroscan.hpp"
+#include "riftwii/storagepaths.hpp"
 
 #include <dirent.h>
 #include <strings.h>
@@ -106,7 +108,9 @@ void RescanHomebrewApps() {
     Scan& state = scan();
     state.apps.clear();
     state.read = false;
-    scan_drive(state, "sd:", "SD");
+    if (!PrimaryOnUsb()) scan_drive(state, "sd:", "SD");
+    scan_drive(state, "usb:", "USB");
+    AppendRetroApps(state.apps);
     // USB game volumes are not libfat devices. Until app reads use the
     // volume reader too, only offer binaries the stdio launcher can open.
     std::stable_sort(state.apps.begin(), state.apps.end(), [](const HomebrewApp& a, const HomebrewApp& b) {
@@ -139,6 +143,28 @@ bool StartHomebrew(const HomebrewApp& app, std::string& error) {
         error = app.folder + " has no boot.dol to start";
         return false;
     }
+    if (!app.retro_rom.empty()) {
+        struct stat info {};
+        if (stat(app.retro_rom.c_str(), &info) != 0 || !S_ISREG(info.st_mode)) {
+            error = "The selected ROM no longer exists on USB";
+            return false;
+        }
+    }
+    if (!app.retro_rom.empty() && app.arguments.size() >= 2 && app.arguments[0].compare(0, 5, "usb:/") == 0 && app.arguments[0].back() == '/') {
+        DIR* dir = opendir(app.arguments[0].c_str());
+        bool ambiguous = false;
+        if (dir) {
+            while (dirent* entry = readdir(dir)) {
+                if (strcasecmp(entry->d_name, app.arguments[1].c_str()) != 0 &&
+                    strcasestr(entry->d_name, app.arguments[1].c_str())) ambiguous = true;
+            }
+            closedir(dir);
+        }
+        if (ambiguous) {
+            error = "The emulator's autoload is ambiguous for this filename; use distinct ROM names";
+            return false;
+        }
+    }
     const std::string line = riftwii::app_command_line(app.path, app.arguments);
     if (line.empty()) {
         error = "the app path is empty, contains a NUL or exceeds the command-line limit";
@@ -146,7 +172,7 @@ bool StartHomebrew(const HomebrewApp& app, std::string& error) {
     }
     logf("Homebrew: starting %s (%s, %u argument(s))\n", app.name.c_str(), app.path.c_str(),
          static_cast<unsigned>(app.arguments.size()));
-    return StartHomebrewApp(app.path, line, error);
+    return StartHomebrewApp(app.path, line, error, !app.retro_rom.empty());
 }
 
 }

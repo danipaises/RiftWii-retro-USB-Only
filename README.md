@@ -1,203 +1,46 @@
-<p align="center">
-  <img src="docs/images/banner.png" alt="RiftWii" width="640">
-</p>
+# RiftWii Retro USB-Only — alfa em desenvolvimento
 
-<p align="center">
-  <b>A mod loader for the Wii.</b> Play Riivolution-format mods from the disc, a USB drive or the SD card.
-  <br><br>
-  <a href="https://github.com/KakarottoCake/Riftwii/releases/latest"><b>Download</b></a> ·
-  <a href="docs/GUIDE.md">Guide</a> ·
-  <a href="docs/GUIDE.md#troubleshooting">Troubleshooting</a> ·
-  <a href="https://github.com/KakarottoCake/Riftwii/issues">Report a problem</a> ·
-  <a href="https://discord.gg/gGsTdjjQaK">Discord</a>
-</p>
+Projeto exclusivo: https://github.com/danipaises/RiftWii-retro-USB-Only
 
-<table>
-  <tr>
-    <td width="50%"><img src="docs/images/home.png" alt="Home"><br><p align="center">Your games, with covers from GameTDB</p></td>
-    <td width="50%"><img src="docs/images/covers3d.png" alt="3D covers view"><br><p align="center">Or as 3D cases, round a ring</p></td>
-  </tr>
-  <tr>
-    <td><img src="docs/images/carousel.png" alt="Carousel view"><br><p align="center">Fanned out on a carousel</p></td>
-    <td><img src="docs/images/shelf.png" alt="Shelf view"><br><p align="center">On a shelf (the Bookshelf theme)</p></td>
-  </tr>
-  <tr>
-    <td><img src="docs/images/channels.png" alt="Channels view"><br><p align="center">Or as channels, with each game's own icon</p></td>
-    <td><img src="docs/images/channel-banner.png" alt="A game's banner"><br><p align="center">and its banner, as on the Wii Menu</p></td>
-  </tr>
-  <tr>
-    <td><img src="docs/images/game.png" alt="A game's page"><br><p align="center">Each game's own page</p></td>
-    <td><img src="docs/images/mods.png" alt="Mods"><br><p align="center">Turn mod packs on and pick their options</p></td>
-  </tr>
-  <tr>
-    <td><img src="docs/images/cheats.png" alt="Cheats"><br><p align="center">Cheats, downloaded for you</p></td>
-    <td><img src="docs/images/settings.png" alt="Settings"><br><p align="center">Settings</p></td>
-  </tr>
-  <tr>
-    <td><img src="docs/images/midnight.png" alt="The Midnight theme"><br><p align="center">Themes (Midnight)</p></td>
-    <td><img src="docs/images/homemenu.png" alt="HOME Menu"><br><p align="center">A HOME Menu, like the Wii's</p></td>
-  </tr>
-</table>
+A base USB-only anterior foi recuperada com fontes e DOL preservados. Esta
+integração retrô é nova, experimental e não foi testada no Wii físico.
+Leia [o estado real e as pendências](retro-integration/STATUS.md).
 
-## Features
+## Instalação e atualização
 
-- **Mods, no patching.** Riivolution-format packs (the same XML and folders) load into the game as it starts. Your game files are never changed.
-- **Play from anywhere.** The disc, a USB drive (FAT32, NTFS or formatted as WBFS) or the SD card, as WBFS, ISO or Dolphin's RVZ.
-- **WiiWare and Virtual Console.** The channels on your Wii, and those in an emulated NAND on the SD card, are on Home with the rest, with cheats and video settings. WAD files can be installed into that emulated NAND from Settings.
-- **Big mods work.** Pulsar and CT-CODE packs such as CTGP Revolution 1.02 and other Mario Kart Wii distributions (CTGP Revolution 1.03 does not work yet), plus packs over the network from a PC (RiiFS), and Gecko code builds like Project+ and REX without their launchers.
-- **Saves kept apart.** Modded saves can live on the SD card, away from your Wii saves, or in the same emulated NAND as USB Loader GX's.
-- **Per game settings.** Cheats (downloaded for you), picture width, deflicker, borders, video mode (480p, PAL 60), game language and cIOS.
-- **Online play.** Wiimmfi, WiiLink WFC, AltWFC or your own server.
-- **Feels like a Wii.** Covers, names and game details from GameTDB, several ways to show your games (covers, names, 3D cases on a ring, a carousel, a shelf of boxes, or channels with each game's animated icon and banner), your own order (move games around as on the Wii Menu), themes, optional sounds and music read from your own Wii Menu into memory, favourites, recently played, search, letter jumps (hold B and press a direction), a HOME Menu and seven languages (English, Spanish, Japanese, Portuguese, Italian, French and Korean).
-- **Any controller.** Wii Remote, Classic Controller, GameCube controller, the GameCube adapter for Wii U, the Wii U Pro Controller (in games, as a Classic Controller), and USB pads through fakemote.
-- **A Wii Menu channel**, on a Wii or a Wii U, and **updates** from inside RiftWii, always to the latest release.
-- **Problem reports in one step.** When something goes wrong, RiftWii uploads its logs and shows a QR code to send us; no need to take out your SD card.
-- **Experimental:** burned Wii discs, in the Wii's drive or a USB DVD drive.
+Faça backup do pendrive. Extraia o kit na raiz de um USB FAT32. Não substitua
+suas configurações nem saves. Os templates têm nomes .example diferentes.
+Coloque suas ROMs em retro/<plataforma> e abra Aplicativos no RiftWii.
+Sem ROMs, a lista permanece vazia e utilizável. Jogos Wii ficam em wbfs;
+GameCube mantém a integração e as limitações anteriores.
 
-## Getting started
+Não instale WADs, não altere IOS246 nem instale cIOS para testar esta alfa.
+No emulador selecione sair para o loader; quando o canal RiftWii não existir,
+o retorno usa o fallback HBC/Menu Wii. Não existe promessa de retorno de todos
+os emuladores antes do teste físico.
 
-You need a Wii (or a Wii U in Wii mode) with the Homebrew Channel and a FAT32 SD card. Games on USB or SD need a [d2x cIOS](docs/GUIDE.md#what-you-need).
+## Compilar sem Docker local
 
-1. Download the zip from [Releases](https://github.com/KakarottoCake/Riftwii/releases/latest).
-2. Copy its `sd-card` folder to your SD card (and `usb-drive` to your USB drive, if you use one).
-3. Put mod packs in `sd:/riivolution` and games in `wbfs` or `games`.
-4. Start RiftWii from the Homebrew Channel.
+Instale devkitPro/devkitPPC e portlibs descritos em docs/USB_ONLY.md.
+`bash tools/build_usb_only.sh` compila a aplicação e os testes. Para o kit,
+instale py7zr e execute `python3 retro-integration/package.py` após o build.
+Emuladores são integrados a partir dos releases/binários fixados no lock,
+não apresentados como recompilados. Fontes correspondentes acompanham o kit.
 
-Questions, test builds and help are on the [RiftWii Discord](https://discord.gg/gGsTdjjQaK). The [guide](docs/GUIDE.md) covers everything else: each screen, online play, the GameCube adapter, writing packs, and what to send when something goes wrong.
+## Teste físico pendente
 
-## About AI assistance
+Para cada plataforma NES/SNES/GB/GBC/GBA/N64/MS/MD/GG/SG1000/CD, use uma ROM
+homebrew com licença redistribuível obtida do próprio autor e registre URL,
+licença, hash, desempenho, controles, save, state, saída e retorno. Não foi
+selecionada ainda uma amostra legal validada para cada sistema. Sem SD:
+RiftWii → jogo → RiftWii → outro jogo, por três ciclos. Teste também Wii e GC.
+Antes de atualizar, preserve apps/riftwii e as pastas de saves de cada emulador.
 
-Yes, RiftWii was written with AI assistance, and I won't pretend
-otherwise. But it was not vibecoded. Every step was supervised closely,
-because even the best models make terrible calls when you just throw
-them at a project and walk away. Left alone, they suggested "fixes" like
-patching discs at random based on assembly fingerprints to make a
-problem go away, and seemed to think that was fine. I can't imagine what
-a truly vibecoded version of this would look like. The design decisions,
-the testing on real hardware and the refusal to ship shortcuts like that
-are mine.
+## Licenças e autoria
 
-This is a hobby project. As a kid I wanted to play mods straight from a
-USB drive, and Riivolution never allowed it; its developer was firmly
-against USB loading. RiftWii exists to finally get past that.
-
-## Credits
-
-RiftWii stands on a lot of other people's work. Code that follows or
-contains theirs names them in its file header, and
-[NOTICE.md](NOTICE.md) lists each piece: what it is, where it came from
-(with the commit), and its license.
-
-- **USB Loader GX** (https://github.com/wiidev/usbloadergx, GPL-3.0):
-  the online server patches (`PrivateServerPatcher`, `domainpatcher`),
-  the Wiimmfi patches and Mario Kart Wii security fix, the
-  return-to-channel patch, the language patch, the video mode tables,
-  its fixes for particular games (Kirby's Return to Dream Land's
-  MetaFortress, New Super Mario Bros. Wii, Prince of Persia, Resident
-  Evil 4, Excite Truck, the error #002 and 480p fixes), its automatic
-  cIOS choice, the region strings fix and the aspect ratio, rumble and
-  speaker options, how it keeps saves in d2x's emulated NAND and where
-  it keeps that NAND (for the Saves choice "SD, emulated NAND"), the Wiinnertag file the RiiTag support reads (Dimok,
-  zlib), how to find the Wii Menu's fonts for Settings > Menu font
-  (Dimok, giantpune, blackb0x) and read its bitmap font (giantpune and
-  Dimok, zlib), how to drive d2x's USB device on
-  either USB port (Dimok, Rodries, Kwiirk, zlib), and RiftWii's copy of
-  the Gecko code handler; the channel identity and synthetic ticket layout
-  (dude, Miigotu and Dimok, zlib; source commit in NOTICE.md). Thanks to
-  its developers and everyone whose work it carries: ToadKing
-  (wiilauncher-nossl), Leseratte and the Wiimmfi team, giantpune, Nuke
-  and the GeckoOS authors, crediar, dcx2, container12345, blackb0x and
-  WiiPower.
-- **Gecko OS** by Nuke, brkirch, Link and the Gecko authors: the cheat
-  code handler (full source in [vendor-gecko](vendor-gecko)).
-- **Brainslug** by Alex Chadwick and Florian Bach (MIT): the boot
-  sequence. **wup-028-bslug** by Alex Chadwick (MIT): the GameCube
-  controller adapter.
-- **Nintendont** by FIX94 and contributors: the USB HID driver and the
-  GameCube sound program patches, used with its developers' permission.
-  **WiiDRC** by FIX94: the Wii U GamePad. **dolxz** by FIX94 (MIT): the
-  idea of the packed DOL (RiftWii's own stub and format).
-- **Mario Party 4 community decompilation**: documentation of GameCube font
-  encoding behavior (read only; no code copied).
-- **libwiigui** by Tantric, **FreeTypeGX** by Armin Tamzarian,
-  **oggplayer** and **libasnd** by Hermes: the menu's toolkit, text and music
-    player, and the streaming mixer API reference.
-- **WiiLink WFC** (wfc-patcher-wii): WiiLink online play.
-- **WiiFlow Lite** (https://github.com/Fledge68/WiiFlow_Lite): channel
-  application type and BI2 setup, checked alongside USB Loader GX; RiftWii's
-  boot context and SD mount lifetime also follow the behavior documented by
-  USB Loader GX, d2x and Dolphin (source commits in NOTICE.md).
-- **d2x cIOS**: the USB and SD game loading interface, and how its FAT
-  module mounts and lets go of the SD card for its emulated NAND.
-- **devkitPro and libogc** (Michael Wiedenbauer, Dave Murphy, Hector
-  Martin, Sven Peter and others): the toolchain and the Wii library;
-  libogc also documents the physical GameCube card read protocol, SRAM behavior
-  and MEM1-only EXI DMA, and SD card initialization when IOS cannot do it.
-- **Dolphin**, **wiibrew**, the **Riivolution patch format wiki** and
-  **libruntimeiospatch**: how the Wii, IOS and the patch format behave
-  (read as documentation); Dolphin also for how the Wii Remote extension's
-  encryption key is used (the Pro Controller translator). **libwbfs** by Kwiirk and contributors: the
-  WBFS drive layout. **Friivolution** by december: the launch argument
-  other loaders pass (both read as documentation, nothing copied).
-- **projectPiki's Pikmin 2 decompilation**: GameCube SDK controller
-  lifecycle behaviour, read as documentation; no code copied.
-- **The Mario Kart: Double Dash!! decompilation** (doldecomp): how the
-  game asks SIProbe before it reads a controller port, read as
-  documentation; no code copied.
-- **pugixml** by Arseny Kapoulkine, **Zstandard** by Meta, **BearSSL**
-  by Thomas Pornin, **FreeType**, **zlib**, **Tremor**.
-- **GameTDB** for game names and covers, **RiiConnect24** for the cheat
-  archive, **GameHacking.org** for the cheat codes RiiConnect24's archive
-  lacks (fetched at most once a month, when a game needs them), **M+ Fonts** for the menu font, **Zane Little** for the menu
-  music, **Kenney** (kenney.nl) for the controller and button pictures.
-- **Animated GameCube banners**: the community's banners, hosted by
-  RiiConnect24 (banner.rc24.xyz).
-- **DDinghoya** for the Korean translation, **MidyGamy** for the French
-  one.
-
-## License
-
-GPL-3.0-or-later ([LICENSE](LICENSE)). RiftWii contains no Riivolution
-code. Its third-party components, their origins and licenses are in
-[NOTICE.md](NOTICE.md). Each release zip carries `LICENSE.txt`,
-`NOTICE.md` and `SOURCE.txt` (which commit of this repository it was
-built from), and RiftWii shows its license and credits in Settings >
-Credits and license.
-
-### A note for the license enthusiasts
-
-Good news: RiftWii follows the GPL to the letter, and then some. For
-anyone who needs it spelled out:
-
-- Every file that follows someone else's work says so at the top, with
-  the project, the file and the functions.
-- [NOTICE.md](NOTICE.md) lists every component, where it came from (down
-  to the commit) and its license.
-- Every release zip carries the full license, the notices and the exact
-  commit it was built from.
-- The Gecko code handler ships with its assembly source, which rebuilds
-  it byte for byte. That's more than most Wii loaders bother with.
-- RiftWii itself will show you all ~840 lines of the GPL, in Settings >
-  Credits and license. Scrolling to the end is left as an exercise for
-  the reader.
-
-If you still think something is missing a credit, open an
-[issue](https://github.com/KakarottoCake/Riftwii/issues). It'll be
-fixed, politely, and probably faster than it took to write the comment.
-
-This is a free hobby project that loads mods into games for a console
-from 2006. It's not that serious.
-
-Developers and forks: start with [docs/MAP.md](docs/MAP.md) (every file, and
-where each feature lives), then [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-and [docs/DEVELOPING.md](docs/DEVELOPING.md).
-
-## Disclaimer
-
-I don't condone piracy. RiftWii doesn't come with any games and won't
-download them for you. Play your own games: discs you own, or backups you
-made from them yourself.
-
-RiftWii exists for preservation, and to move Wii development forward:
-out of the stone age of needing an aging disc in an aging drive every
-time you want to play.
+RiftWii: KakarottoCake e colaboradores, GPL-3.0-or-later. Veja LICENSE,
+NOTICE.md e README-UPSTREAM.md. FCE Ultra GX, Snes9x GX, VBA GX: dborth e
+respectivos autores; Wii64: Team Wii64; Genesis Plus GX: Eke-Eke e demais
+autores. Cada componente mantém sua licença própria, incluída nas fontes.
+O kit que inclui Genesis Plus GX não pode ser vendido ou usado comercialmente.
+Nenhuma ROM comercial, BIOS proprietária ou instalador de canal é incluído.

@@ -245,11 +245,11 @@ void clear_return_stub_magic() {
 // whichever starts first. Left as it was when the Homebrew Channel started
 // RiftWii (its apps go back to it, as they always have), and not put
 // there when Settings send the Wii Menu button to the Wii Menu.
-void plant_return_stub(const u8* dol, u32 size) {
+void plant_return_stub(const u8* dol, u32 size, bool prefer_riftwii) {
     const riftwii::ReturnStubKind there =
         riftwii::return_stub_kind(reinterpret_cast<const std::uint8_t*>(RTSTUB_BASE));
     const bool clear = riftwii::dol_clear_of_return_stub(dol, size);
-    if (there == riftwii::ReturnStubKind::HomebrewChannel) {
+    if (there == riftwii::ReturnStubKind::HomebrewChannel && !prefer_riftwii) {
         // The app's sections are copied over the same range: a stub they
         // overwrite only in part would keep its magic and crash the exit.
         if (!clear) {
@@ -261,7 +261,7 @@ void plant_return_stub(const u8* dol, u32 size) {
         logf("Homebrew app: its exit goes back to the Homebrew Channel, which started RiftWii\n");
         return;
     }
-    const bool back_to_riftwii = Settings().return_to == "riftwii";
+    const bool back_to_riftwii = prefer_riftwii || Settings().return_to == "riftwii";
     if (!back_to_riftwii || !clear) {
         // An earlier RiftWii's stub would still be found: its magic goes.
         if (there == riftwii::ReturnStubKind::RiftWii) clear_return_stub_magic();
@@ -319,7 +319,7 @@ bool StartHomebrewApp(const std::string& path, std::string& error) {
     return StartHomebrewApp(path, line, error);
 }
 
-bool StartHomebrewApp(const std::string& path, const std::string& command_line, std::string& error) {
+bool StartHomebrewApp(const std::string& path, const std::string& command_line, std::string& error, bool prefer_riftwii) {
     u32 size = 0;
     u8* dol = dolboot_read(path.c_str(), &size, [](u32 n) -> void* { return memalign(32, n); },
                             [](void* p) { std::free(p); });
@@ -330,7 +330,7 @@ bool StartHomebrewApp(const std::string& path, const std::string& command_line, 
         return false;
     }
     logf("Homebrew app: starting %s (%u bytes)\n", path.c_str(), static_cast<unsigned>(size));
-    plant_return_stub(dol, size);
+    plant_return_stub(dol, size, prefer_riftwii);
     LaunchMusicEnd("the app starts next");
     LogClose();
     fatUnmount("sd:");

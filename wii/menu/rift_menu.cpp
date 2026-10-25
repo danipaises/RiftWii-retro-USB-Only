@@ -1245,7 +1245,7 @@ static void BuildHome(const FrontendState& state, std::vector<GridItem>& items, 
 			if (searching && !MatchesSearch(searchName, apps[i].name, false)) continue;
 			GridItem item;
 			item.title = apps[i].name;
-			item.badge = apps[i].path.empty() ? "ELF" : "APP";
+			item.badge = !apps[i].retro_rom.empty() ? apps[i].device : apps[i].path.empty() ? "ELF" : "APP";
 			item.key = "app:" + apps[i].folder;
 			item.hue = skin::HueFor(apps[i].name);
 			items.push_back(std::move(item));

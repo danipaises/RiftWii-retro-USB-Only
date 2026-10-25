@@ -243,3 +243,11 @@ only (how its choices files and macros work), never copied. Behavioural referenc
   state machine, the second disc's checks and its MEM2 tables are
   RiftWii's own. Nintendont is already credited in the README's Credits
   and `wii/menu/credits.cpp`.
+
+## Retro launcher adapters
+
+Argument protocols were checked in dborth/fceugx 4.0.3, dborth/snes9xgx 5.0.4,
+dborth/vbagx 3.0.4, emukidid/Wii64 1.5.0 and ekeeke/Genesis-Plus-GX at the
+commits in retro-integration/emulators.lock.json. Separate applications keep
+their upstream licenses; no emulator source is linked into the RiftWii DOL.
+Full corresponding source archives accompany their unmodified binaries.
