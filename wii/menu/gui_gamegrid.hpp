@@ -59,6 +59,8 @@ public:
     void SetItems(const std::vector<GridItem>* items);  // must outlive the grid
     // Covers (6x2) or names (4x3).
     void SetCovers(bool on);
+    using LocalCoverSource = std::function<bool(int, riftwii::wii::skin::Tex&)>;
+    void SetLocalCoverSource(LocalCoverSource source) { localCoverSource = std::move(source); }
     // The shelf instead of either (covers drawn on its boxes' fronts).
     void SetShelf(bool on);
     bool Shelf() const { return shelf; }
@@ -144,6 +146,7 @@ public:
     void Update(GuiTrigger* t) override;
 
 private:
+    LocalCoverSource localCoverSource;
     struct Slot {
         GuiText* lines[3];
         GuiText* id;

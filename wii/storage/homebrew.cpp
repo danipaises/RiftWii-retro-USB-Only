@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "homebrew.hpp"
 #include "retroscan.hpp"
+#include "riftwii/retrolibrary.hpp"
 #include "riftwii/storagepaths.hpp"
 
 #include <dirent.h>
@@ -9,6 +10,7 @@
 #include <sys/stat.h>
 
 #include <cstring>
+#include <cstdio>
 
 #include <algorithm>
 #include <cstddef>
@@ -65,6 +67,8 @@ void add_app(Scan& state, const std::string& badge, const std::string& path, con
     app.name = app_display_name(meta, folder);
     if (app.name.empty()) app.name = folder;
     app.folder = path;
+    app.library_key = retro::stable_key(path, false);
+    app.platform = "homebrew";
     app.program = program;
     app.device = badge;
     app.coder = meta.coder;
@@ -118,7 +122,7 @@ void RescanHomebrewApps() {
         return by != 0 ? by < 0 : strcasecmp(a.folder.c_str(), b.folder.c_str()) < 0;
     });
     state.done = true;
-    logf("Homebrew: %u app(s) in sd:/apps%s\n", static_cast<unsigned>(state.apps.size()),
+    logf("Homebrew and retro: %u entry/entries on mounted storage%s\n", static_cast<unsigned>(state.apps.size()),
          state.read ? "" : " (the apps folder could not be opened)");
 }
 
@@ -170,6 +174,16 @@ bool StartHomebrew(const HomebrewApp& app, std::string& error) {
         error = "the app path is empty, contains a NUL or exceeds the command-line limit";
         return false;
     }
+    if (!app.retro_rom.empty()) {
+        FILE* rom = std::fopen(app.retro_rom.c_str(), "rb");
+        unsigned char byte = 0;
+        const bool readable = rom && std::fread(&byte, 1, 1, rom) == 1;
+        if (rom) std::fclose(rom);
+        if (!readable) { error = "ROM_READ: the ROM exists but USB could not read it"; return false; }
+        logf("Retro launch: ROM read passed; platform %s; path %s\n", app.platform.c_str(), app.retro_rom.c_str());
+    }
+    for (std::size_t i = 0; i < app.arguments.size(); ++i)
+        logf("Homebrew argument %u: [%s]\n", static_cast<unsigned>(i + 1), app.arguments[i].c_str());
     logf("Homebrew: starting %s (%s, %u argument(s))\n", app.name.c_str(), app.path.c_str(),
          static_cast<unsigned>(app.arguments.size()));
     return StartHomebrewApp(app.path, line, error, !app.retro_rom.empty());

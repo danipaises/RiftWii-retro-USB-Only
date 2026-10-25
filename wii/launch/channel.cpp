@@ -1,6 +1,12 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "channel.hpp"
+#include "ios_reload.hpp"
+#include "usbcatalog.hpp"
+#include "boot.hpp"
+#include "homebrew.hpp"
+#include "gameextras.hpp"
+#include <ogc/machine/processor.h>
 #include "riftwii/storagepaths.hpp"
 
 #include <gccore.h>
@@ -15,7 +21,6 @@
 #include <utility>
 #include <vector>
 
-#include "boot.hpp"
 #include "dolboot.h"
 #include "i18n.hpp"
 #include "ios_reload.hpp"
@@ -320,6 +325,24 @@ bool StartHomebrewApp(const std::string& path, std::string& error) {
 }
 
 bool StartHomebrewApp(const std::string& path, const std::string& command_line, std::string& error, bool prefer_riftwii) {
+    if (prefer_riftwii && PrimaryOnUsb()) {
+        logf("Retro handoff: entering on IOS%d rev %d; resetting IOS58 before reading the emulator DOL\n", IOS_GetVersion(), IOS_GetRevision());
+        if (IOS_GetVersion() == 58 && read32(0x0D800064) == 0xFFFFFFFF) keep_hardware_access("Retro handoff");
+        // reload_ios flushes the old mount and closes both storage clients.
+        // Do this before allocating the DOL: IOS overwrites low MEM2.
+        const ReloadResult result = reload_ios(58, error, true);
+        if (result == ReloadResult::Terminal) halt_after_terminal_reload();
+        if (result != ReloadResult::Ok || IOS_GetVersion() != 58) {
+            error = "USB_IOS: a fresh IOS58 could not be started: " + error;
+            return false;
+        }
+        if (!MountPrimaryForMenu()) {
+            error = "USB_MOUNT: USB could not be remounted on IOS58 before loading the emulator";
+            return false;
+        }
+        LogReopen();
+        logf("Retro handoff: USB remounted on IOS58; %s\n", last_reload_detail().c_str());
+    }
     u32 size = 0;
     u8* dol = dolboot_read(path.c_str(), &size, [](u32 n) -> void* { return memalign(32, n); },
                             [](void* p) { std::free(p); });
@@ -329,12 +352,20 @@ bool StartHomebrewApp(const std::string& path, const std::string& command_line, 
         std::free(dol);
         return false;
     }
+    if (prefer_riftwii && !dolboot_has_argv(dol, size)) {
+        error = "ARGS_MISSING: the emulator DOL has no compatible argument block";
+        std::free(dol);
+        return false;
+    }
     logf("Homebrew app: starting %s (%u bytes)\n", path.c_str(), static_cast<unsigned>(size));
     plant_return_stub(dol, size, prefer_riftwii);
+    const auto& app = HomebrewToStart();
+    if (app.path == path && !app.library_key.empty()) RecordPlay(app.library_key);
     LaunchMusicEnd("the app starts next");
     LogClose();
     fatUnmount("sd:");
-    fatUnmount("usb:");
+    UnmountPrimaryUsb();
+    release_usb_driver();
     AUDIO_StopDMA();
     dolboot_run_line(dol, command_line.data(), static_cast<u32>(command_line.size()));
 }

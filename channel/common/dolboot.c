@@ -70,6 +70,13 @@ bool dolboot_valid(const u8* dol, u32 size) {
     return entry_loaded;
 }
 
+bool dolboot_has_argv(const u8* dol, u32 size) {
+    if (!dol || size < sizeof(DolHeader)) return false;
+    const DolHeader* h = (const DolHeader*)dol;
+    return h->size[0] >= 8 + sizeof(struct __argv) && h->offset[0] <= size &&
+           h->size[0] <= size - h->offset[0] && *(const u32*)(dol + h->offset[0] + 4) == ARGV_MAGIC;
+}
+
 #define DOLBOOT_LINE_MAX 1024
 static char line_copy[DOLBOOT_LINE_MAX];
 

@@ -20,6 +20,8 @@ struct HomebrewApp {
     std::vector<std::string> arguments;
     std::string problem;
     std::string retro_rom;
+    std::string platform;
+    std::string library_key;
 };
 
 const std::vector<HomebrewApp>& HomebrewApps();

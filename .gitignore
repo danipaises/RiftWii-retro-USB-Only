@@ -13,3 +13,7 @@ build-bearssl/
 build-channel/
 build-plugins/
 tests/local/
+
+# Verified release output and pinned upstream download cache.
+dist/
+build-downloads/

@@ -1,16 +1,19 @@
-# RiftWii Retro USB-Only — alfa em desenvolvimento
+# RiftWii Retro USB-Only — v0.1.0-alpha.3
 
 Projeto exclusivo: https://github.com/danipaises/RiftWii-retro-USB-Only
 
 A base USB-only anterior foi recuperada com fontes e DOL preservados. Esta
-integração retrô é nova, experimental e não foi testada no Wii físico.
+alpha.2 foi testada pelo usuário no Wii e apresentou falhas reais. As correções
+da alpha.3 são experimentais e ainda exigem confirmação no console.
 Leia [o estado real e as pendências](retro-integration/STATUS.md).
 
 ## Instalação e atualização
 
 Faça backup do pendrive. Extraia o kit na raiz de um USB FAT32. Não substitua
 suas configurações nem saves. Os templates têm nomes .example diferentes.
-Coloque suas ROMs em retro/<plataforma> e abra Aplicativos no RiftWii.
+Coloque suas ROMs em retro/<plataforma> e selecione All games no RiftWii.
+Para atualizar a alpha.2, use o pacote Update após backup; leia as instruções
+em retro-integration/STATUS.md. O Kit completo é destinado à instalação nova.
 Sem ROMs, a lista permanece vazia e utilizável. Jogos Wii ficam em wbfs;
 GameCube mantém a integração e as limitações anteriores.
 
@@ -26,6 +29,15 @@ Instale devkitPro/devkitPPC e portlibs descritos em docs/USB_ONLY.md.
 instale py7zr e execute `python3 retro-integration/package.py` após o build.
 Emuladores são integrados a partir dos releases/binários fixados no lock,
 não apresentados como recompilados. Fontes correspondentes acompanham o kit.
+
+## Testes e atualização
+
+A alpha.3 passou em 121 testes C/C++ e 14 testes Python, compilação Wii/canal,
+verificação de traduções e correspondência de plugins. O pacote é validado
+automaticamente. Veja [roteiro físico](retro-integration/HARDWARE-alpha3.md).
+`python3 usb_update.py --usb /media/usuario/PENDRIVE` consulta componentes;
+a instalação Linux exige `--apply --yes` e registro de fábrica verificável.
+O atualizador no Wii permanece bloqueado.
 
 ## Teste físico pendente
 

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "appicon.hpp"
+#include "riftwii/retrolibrary.hpp"
 
 #include <gccore.h>
 #include <sys/stat.h>
@@ -29,6 +30,7 @@ struct Slot {
     std::string folder;
     u8* data = nullptr;
     unsigned used = 0;
+    int w = kIconW, h = kIconH;
     bool ready = false;
 };
 
@@ -65,8 +67,8 @@ bool AppIcon(const std::string& folder, skin::Tex& out) {
         if (slot.ready && slot.folder == folder) {
             slot.used = ++g_clock;
             out.data = slot.data;
-            out.w = kIconW;
-            out.h = kIconH;
+            out.w = slot.w;
+            out.h = slot.h;
             return true;
         }
     }
@@ -89,19 +91,26 @@ void LoadAppIcon(const std::string& folder) {
     std::vector<std::uint8_t> png, rgba;
     int w = 0, h = 0;
     std::string error;
-    if (!read_png(folder.compare(0, 11, "usb:/retro/") == 0 ? "usb:/retro/covers/" + folder.substr(11) + ".png" : folder + "/icon.png", png) || !DecodePngRgba(png, rgba, w, h, error)) {
+    const bool rom = folder.find("/apps/") == std::string::npos;
+    // Stable-ID covers also work for native emulator ROM directories.
+    std::string picture = rom ? "usb:/retro/covers/" + retro::stable_key(folder, true).substr(6) + ".png" : folder + "/icon.png";
+    if (!read_png(picture, png) && rom && folder.compare(0, 11, "usb:/retro/") == 0)
+        read_png("usb:/retro/covers/" + folder.substr(11) + ".png", png);
+    if (png.empty() || !DecodePngRgba(png, rgba, w, h, error)) {
         if (!error.empty()) logf("Homebrew: %s/icon.png: %s\n", folder.c_str(), error.c_str());
         return;
     }
     std::vector<std::uint8_t>().swap(png);
-    const std::vector<std::uint8_t> box = riftwii::fit_art(rgba.data(), w, h, kIconW, kIconH);
+    const int boxW = rom ? 96 : kIconW, boxH = rom ? 128 : kIconH;
+    const std::vector<std::uint8_t> box = riftwii::fit_art(rgba.data(), w, h, boxW, boxH);
     std::vector<std::uint8_t>().swap(rgba);
-    if (!victim->data) victim->data = skin::Mem2Alloc(static_cast<std::size_t>(kIconW) * kIconH * 4);
-    if (victim->data == nullptr || !riftwii::to_gx_rgba8(box.data(), kIconW, kIconH, victim->data)) {
+    if (!victim->data) victim->data = skin::Mem2Alloc(static_cast<std::size_t>(96) * 128 * 4);
+    if (victim->data == nullptr || !riftwii::to_gx_rgba8(box.data(), boxW, boxH, victim->data)) {
         victim->ready = false;
         return;
     }
-    DCFlushRange(victim->data, static_cast<std::size_t>(kIconW) * kIconH * 4);
+    DCFlushRange(victim->data, static_cast<std::size_t>(96) * 128 * 4);
+    victim->w = boxW; victim->h = boxH;
     victim->folder = folder;
     victim->used = ++g_clock;
     victim->ready = true;

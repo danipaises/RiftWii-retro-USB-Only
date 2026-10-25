@@ -19,6 +19,7 @@ u8* dolboot_read(const char* path, u32* size, void* (*alloc)(u32 size), void (*r
 
 // Whether the DOL's sections fit its file and land in MEM1, clear of this
 // program and of the file's own copy.
+bool dolboot_has_argv(const u8* dol, u32 size);
 bool dolboot_valid(const u8* dol, u32 size);
 
 // Shuts libogc down, copies the program into place and starts it, with

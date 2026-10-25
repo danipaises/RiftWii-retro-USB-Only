@@ -713,7 +713,12 @@ void GuiGameGrid::DrawCoverTile(int i, bool on, int alpha) {
     const skin::Tex& frame = on ? skin::coverTileOver : skin::coverTile;
     skin::Draw(frame, cx - frame.w / 2.0f, cy - frame.h / 2.0f, alpha, s.scale * kCoverScale);
     const u8* cover = riftwii::wii::CoverTexture(item.id);
-    if (cover) {
+    skin::Tex local;
+    if (localCoverSource && localCoverSource(ItemAt(i), local)) {
+        const float factor = std::min(static_cast<float>(riftwii::kCoverWidth) / local.w,
+                                      static_cast<float>(riftwii::kCoverHeight) / local.h) * s.scale * kCoverScale;
+        skin::Draw(local, cx - local.w / 2.0f, cy - local.h / 2.0f, alpha, factor);
+    } else if (cover) {
         skin::DrawRgb5a3(cover, riftwii::kCoverWidth, riftwii::kCoverHeight, cx - riftwii::kCoverWidth / 2.0f,
                          cy - riftwii::kCoverHeight / 2.0f, alpha, s.scale * kCoverScale);
     } else if (item.badge == "DISC" && skin::discCase.data) {

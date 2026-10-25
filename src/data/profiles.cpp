@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "riftwii/profiles.hpp"
+#include "riftwii/retrolibrary.hpp"
 
 #include <algorithm>
 
@@ -52,6 +53,7 @@ bool valid_profile_slug(const std::string& slug) {
 }
 
 bool valid_tile_key(const std::string& key) {
+    if (retro::valid_library_key(key)) return true;
     const std::size_t at = key.find('@');
     if (at == std::string::npos) return plausible_game_id(key);
     return plausible_game_id(key.substr(0, at)) && valid_profile_slug(key.substr(at + 1));

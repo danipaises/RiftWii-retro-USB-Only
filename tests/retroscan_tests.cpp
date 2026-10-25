@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <set>
 namespace riftwii::wii { void logf(const char*, ...) {} }
 int main() {
     namespace fs=std::filesystem;
@@ -19,6 +20,21 @@ int main() {
     apps.clear();fs::create_directories("usb:/apps/fceugx");std::ofstream("usb:/apps/fceugx/boot.dol")<<"fixture";
     riftwii::wii::AppendRetroApps(apps);
     failed+=apps.size()!=1 || !apps[0].problem.empty() || apps[0].arguments.size()!=2;
+    const auto key = apps[0].library_key;
+    fs::create_directories("usb:/retro/nes/subfolder");
+    std::ofstream("usb:/retro/nes/subfolder/Novo.ZIP") << "synthetic zip detection fixture";
+    fs::create_directories("usb:/fceugx/roms/collection");
+    std::ofstream("usb:/fceugx/roms/collection/Legacy.NES") << "fixture";
+    apps.clear();
+    riftwii::wii::AppendRetroApps(apps);
+    failed += apps.size() != 3;
+    std::set<std::string> keys;
+    for (const auto& app : apps) keys.insert(app.library_key);
+    failed += keys.size() != 3 || !keys.count(key);
+    fs::remove("usb:/retro/nes/Teste com ação.nes");
+    apps.clear();
+    riftwii::wii::AppendRetroApps(apps);
+    failed += apps.size() != 2;
     fs::current_path(before);fs::remove_all(root);
     std::cout<<"retroscan: "<<failed<<" failure(s)\n";return failed?1:0;
 }

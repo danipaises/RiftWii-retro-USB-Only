@@ -25,7 +25,15 @@ int main() {
     }
     check(prepare(platforms()[5],"usb:/retro/n64/a.v64","rice").program=="usb:/apps/wii64-rice/boot.dol");
     check(!prepare(platforms()[5],"usb:/retro/n64/a.z64","not64").error.empty());
-    check(!accepts(platforms()[0],"a.zip"));
+    check(accepts(platforms()[0],"a.ZIP"));
+    check(is_emulator("USB:/APPS/FCEUGX/BOOT.DOL"));
+    check(!is_emulator("usb:/apps/myhomebrew/boot.dol"));
+    const auto key = stable_key("usb:/retro/nes/Ação.nes", true);
+    check(valid_library_key(key));
+    check(key != stable_key("usb:/retro/nes/My Ação.nes", true));
+    check(key == stable_key("USB:/RETRO/NES/Ação.NES", true));
+    check(prepare(platforms()[0],"usb:/fceugx/roms/sub/test.nes").error.empty());
+    check(!prepare(platforms()[0],"usb:/retro/nes/..\\bad.nes").error.empty());
     std::cout<<"retrolibrary: "<<failures<<" failure(s)\n";
     return failures?1:0;
 }

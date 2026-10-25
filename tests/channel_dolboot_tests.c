@@ -56,6 +56,16 @@ int main(void) {
     header.address[0] = 0x81000000;
     header.size[0] = 0x100;
     header.entry = header.address[0];
+    u8 fixture[0x200] = {0};
+    memcpy(fixture, &header, sizeof(header));
+    *(u32*)(fixture + 0x104) = ARGV_MAGIC;
+    if (!dolboot_has_argv(fixture, sizeof(fixture)) || dolboot_has_argv(fixture, 0x108) || dolboot_has_argv(NULL, 0)) return 1;
+    fixture[0x104] ^= 1;
+    if (dolboot_has_argv(fixture, sizeof(fixture))) return 1;
+    const char arguments[] = "usb:/apps/snes9xgx/boot.dol\0usb:/retro/snes/Com espaços/\0Ação.sfc\0\0";
+    set_argv(&header, arguments, sizeof(arguments));
+    const struct __argv* args = (const struct __argv*)((u8*)memory + 8);
+    if (args->argvMagic != ARGV_MAGIC || args->length != sizeof(arguments) || memcmp(args->commandLine, arguments, sizeof(arguments))) return 1;
     const u32 bss_addresses[] = {0, 0xffffffe0u, 0xffffffffu, 0x81000200u};
     int failures = 0;
     for (unsigned i = 0; i < sizeof(bss_addresses) / sizeof(bss_addresses[0]); ++i) {
