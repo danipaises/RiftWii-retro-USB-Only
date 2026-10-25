@@ -982,7 +982,7 @@ index 0000000..6d21b1c
 +]
 diff --git a/retro-integration/package.py b/retro-integration/package.py
 new file mode 100644
-index 0000000..7a68f02
+index 0000000..69a3de0
 --- /dev/null
 +++ b/retro-integration/package.py
 @@ -0,0 +1,85 @@
@@ -1060,7 +1060,7 @@ index 0000000..7a68f02
 +        if not f.is_file() or f.stat().st_size<256:raise ValueError('Missing emulator: '+name)
 +    for f in stage.rglob('*'):
 +        if not f.is_file():continue
-+        if f.suffix.lower() in ['.wad','.nes','.sfc','.smc','.gb','.gbc','.gba','.z64','.n64','.v64','.iso','.wbfs','.cue','.md','.gg','.sms','.32x'] or f.name.startswith('bios_CD_'):raise ValueError('Forbidden ROM/BIOS/installer: '+str(f))
++        if (f.suffix.lower() == '.md' and f.relative_to(stage).parts[0] == 'retro') or f.suffix.lower() in ['.wad','.nes','.sfc','.smc','.gb','.gbc','.gba','.z64','.n64','.v64','.iso','.wbfs','.cue','.gg','.sms','.32x'] or f.name.startswith('bios_CD_'):raise ValueError('Forbidden ROM/BIOS/installer: '+str(f))
 +    manifest=''.join(hashlib.sha256(f.read_bytes()).hexdigest()+'  '+f.relative_to(stage).as_posix()+'\n' for f in sorted(stage.rglob('*')) if f.is_file())
 +    (stage/'SHA256SUMS.txt').write_text(manifest)
 +    target=OUT/'RiftWii-Retro-USB-Only-v0.1.0-alpha-Kit.zip'
