@@ -321,7 +321,7 @@ index 02f32ea..5d0576e 100644
 +      - run: echo 'Use Retro USB experimental. v1 Complete is not ready.'
 diff --git a/.github/workflows/retro.yml b/.github/workflows/retro.yml
 new file mode 100644
-index 0000000..42f7da4
+index 0000000..24944c6
 --- /dev/null
 +++ b/.github/workflows/retro.yml
 @@ -0,0 +1,58 @@
@@ -371,15 +371,15 @@ index 0000000..42f7da4
 +          path: ${{ env.SOURCE }}/dist/*
 +          if-no-files-found: error
 +      - name: Publish experimental tagged release
-+        if: startsWith(github.ref, 'refs/tags/v0.')
++        if: success() && !startsWith(github.ref, 'refs/tags/v1.')
 +        env:
 +          GH_TOKEN: ${{ github.token }}
-+          TAG: ${{ github.ref_name }}
++          TAG: v0.1.0-alpha.1
 +        shell: bash
 +        run: |
 +          set -euo pipefail
 +          command -v gh || { echo 'gh unavailable: artifact is retained; release not published'; exit 1; }
-+          gh release create "$TAG" "$SOURCE"/dist/* --repo danipaises/RiftWii-retro-USB-Only --prerelease --title "Retro USB experimental $TAG" --notes-file "$SOURCE/retro-integration/STATUS.md"
++          gh release create "$TAG" --target "${{ github.sha }}" "$SOURCE"/dist/* --repo danipaises/RiftWii-retro-USB-Only --prerelease --title "Retro USB experimental $TAG" --notes-file "$SOURCE/retro-integration/STATUS.md"
 +      - name: Reject premature Complete releases
 +        if: startsWith(github.ref, 'refs/tags/v1.')
 +        run: echo 'v1 Complete blocked until interface, saves and return requirements are verified'; exit 1
@@ -982,10 +982,10 @@ index 0000000..6d21b1c
 +]
 diff --git a/retro-integration/package.py b/retro-integration/package.py
 new file mode 100644
-index 0000000..0c59afe
+index 0000000..7a68f02
 --- /dev/null
 +++ b/retro-integration/package.py
-@@ -0,0 +1,84 @@
+@@ -0,0 +1,85 @@
 +# SPDX-FileCopyrightText: 2026 RiftWii contributors
 +# SPDX-License-Identifier: GPL-3.0-or-later
 +"""Build a noncommercial alpha kit; never overwrite user saves/settings."""
@@ -1046,8 +1046,9 @@ index 0000000..0c59afe
 +    for f in (ROOT/'build-plugins/plugins').glob('*.rwp'):
 +        d=app/'plugins';d.mkdir(exist_ok=True);shutil.copy2(f,d/f.name)
 +    shutil.copy2(ROOT/'wii/font/rounded.ttf',app/'font.ttf')
++    shutil.copy2(ROOT/'hbc/music.ogg',app/'music.ogg')
 +    for f in ['icon.png','meta.xml']:
-+        source=ROOT/'channel/installer/hbc'/f
++        source=ROOT/'hbc'/f
 +        if f=='icon.png':shutil.copy2(source,app/f)
 +    (app/'meta.xml').write_text('<app version="1"><name>RiftWii Retro USB alpha</name><version>0.1.0-alpha</version><ahb_access /></app>')
 +    for f in ['README.md','LICENSE','NOTICE.md'] :shutil.copy2(ROOT/f,stage/f)
