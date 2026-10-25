@@ -16,10 +16,18 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     container: devkitpro/devkitppc@sha256:44cb1a920e1ec3ec7c06767493c3b85f8d643d6137cc4661f0201895ac6e4967
+    defaults:
+      run:
+        working-directory: ${{ github.workspace }}
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
+      - name: Verify the checked-out Git workspace inside the container
+        shell: bash
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git -C "$GITHUB_WORKSPACE" rev-parse --verify HEAD
       - name: Prepare host tools
         run: apt-get update -qq && apt-get install -y -qq cmake ninja-build zlib1g-dev zstd python3-pip gh && python3 -m pip install --break-system-packages py7zr==1.0.0
       - name: Validate experimental version
