@@ -1,0 +1,1431 @@
+diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
+index 02f32ea..5d0576e 100644
+--- a/.github/workflows/release.yml
++++ b/.github/workflows/release.yml
+@@ -1,312 +1,9 @@
+ # SPDX-FileCopyrightText: 2026 RiftWii contributors
+ # SPDX-License-Identifier: GPL-3.0-or-later
+-#
+-# A RiftWii release, started by hand (Actions > Release > Run workflow), as
+-# docs/DEVELOPING.md (Releasing) describes it: builds main's latest commit
+-# with CI's devkitPPC, packs the zip and the update pack, fills in
+-# release/notes.md and release/discord.md, then (only when "publish" is
+-# picked) makes the GitHub release, latest and for everyone, and posts the
+-# testers' message to Discord.
+-#
+-# "dry-run" (the default) publishes nothing: the three files and the
+-# filled-in texts come out as an artifact, and the run's summary shows both
+-# texts, so a release can be checked before it goes out.
+-#
+-# "discord-repost" builds and publishes nothing: it posts an earlier
+-# release's Discord message again, filled in from that release's tag with
+-# today's tester role (for a post that went out wrong; delete that one first).
+-name: Release
+-
+-on:
+-  workflow_dispatch:
+-    inputs:
+-      mode:
+-        description: "dry-run builds and shows the release; publish puts it out; discord-repost posts a published release's Discord message again"
+-        type: choice
+-        options: [dry-run, publish, discord-repost]
+-        default: dry-run
+-      discord:
+-        description: "Post release/discord.md to the testers' channel after publishing"
+-        type: boolean
+-        default: true
+-      version:
+-        description: "discord-repost only: the release to post again, e.g. 2610-541"
+-        type: string
+-        default: ""
+-
+-permissions:
+-  contents: read
+-
+-# One release at a time: a second run waits instead of racing for the tag.
+-concurrency:
+-  group: release
+-  cancel-in-progress: false
+-
++name: Release policy
++on: workflow_dispatch
+ jobs:
+-  check:
+-    name: Ready to release
+-    if: inputs.mode != 'discord-repost'
++  policy:
+     runs-on: ubuntu-24.04
+-    timeout-minutes: 5
+-    permissions:
+-      contents: read
+-      actions: read
+     steps:
+-      - uses: actions/checkout@v5
+-        with:
+-          fetch-depth: 0
+-      # Every release is for everyone (docs/DEVELOPING.md), so it comes
+-      # from main. A dry run may try another branch's notes.
+-      - name: From main
+-        if: inputs.mode == 'publish' && github.ref != 'refs/heads/main'
+-        run: |
+-          echo "::error::A release is published from main; this run is on ${GITHUB_REF#refs/heads/}."
+-          exit 1
+-      # The tests ran on this commit when it was pushed; a release waits for
+-      # them to pass.
+-      - name: CI passed on this commit
+-        env:
+-          GH_TOKEN: ${{ github.token }}
+-        run: |
+-          conclusion=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$GITHUB_SHA&event=push&per_page=1" \
+-            --jq '.workflow_runs[0] | if . == null then "none" else (.conclusion // .status) end')
+-          echo "CI on ${GITHUB_SHA::8}: $conclusion"
+-          if [ "$conclusion" != "success" ]; then
+-            message="CI on ${GITHUB_SHA::8} is '$conclusion', not success: wait for it or fix it before releasing."
+-            if [ "${{ inputs.mode }}" = "publish" ]; then
+-              echo "::error::$message"
+-              exit 1
+-            fi
+-            echo "::warning::$message"
+-          fi
+-      # The templates are rewritten for each release: notes unchanged since
+-      # the last release's tag are that release's notes.
+-      - name: Notes written for this release
+-        run: |
+-          previous=$(git describe --tags --abbrev=0 --match 'v[0-9][0-9][0-9][0-9]-*' 2>/dev/null || true)
+-          if [ -z "$previous" ]; then
+-            echo "No earlier release tag; nothing to compare the notes with."
+-            exit 0
+-          fi
+-          for notes in release/notes.md release/discord.md; do
+-            if git cat-file -e "$previous:$notes" 2>/dev/null && git diff --quiet "$previous" HEAD -- "$notes"; then
+-              echo "::error::$notes is the same as at $previous. Write this release's text first."
+-              exit 1
+-            fi
+-          done
+-          echo "The notes changed since $previous."
+-
+-  build:
+-    name: Build the release
+-    needs: check
+-    runs-on: ubuntu-24.04
+-    timeout-minutes: 30
+-    # The same pinned image as CI's Wii build, so the release is the build
+-    # CI checked.
+-    container: devkitpro/devkitppc@sha256:44cb1a920e1ec3ec7c06767493c3b85f8d643d6137cc4661f0201895ac6e4967
+-    outputs:
+-      version: ${{ steps.version.outputs.version }}
+-    env:
+-      TESTER_ROLE_ID: ${{ vars.DISCORD_TESTER_ROLE_ID }}
+-    # The image's default shell may be plain sh: these steps keep to it.
+-    steps:
+-      - uses: actions/checkout@v5
+-        with:
+-          # Makefile.wii numbers the build by the commits since the base
+-          # tag, so it needs the history and the tags.
+-          fetch-depth: 0
+-      - name: Install zstd and unzip
+-        run: apt-get update -qq && apt-get install -y -qq zstd unzip
+-      - name: Fetch the release tags
+-        run: |
+-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+-          git fetch --quiet --no-tags origin 'refs/tags/*:refs/tags/*'
+-      - name: Version
+-        id: version
+-        run: |
+-          version=$(make --no-print-directory -f Makefile.wii version)
+-          if ! echo "$version" | grep -Eq '^[0-9]{4}-[0-9]+$'; then
+-            echo "::error::Makefile.wii gives '$version', not a YYMM-N version."
+-            exit 1
+-          fi
+-          if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+-            echo "::error::v$version is already a tag: this commit was released, or a release went out from another commit with the same number."
+-            exit 1
+-          fi
+-          echo "version=$version" >> "$GITHUB_OUTPUT"
+-          echo "RiftWii $version from $(git rev-parse --short=8 HEAD)"
+-      # Notes first: a mistake in them fails the run in seconds, not after
+-      # the build. The DOL's SHA-256 is filled in again after the build.
+-      - name: Check the notes
+-        run: |
+-          printf 'not the DOL yet' > notes-check.dol
+-          python3 tools/release_notes.py render --version "${{ steps.version.outputs.version }}" \
+-            --dol notes-check.dol --repo "$GITHUB_REPOSITORY" --role-id "$TESTER_ROLE_ID" \
+-            ${{ inputs.mode == 'publish' && inputs.discord && '--require-role' || '' }} --out notes-check
+-          rm -rf notes-check notes-check.dol
+-      - name: Build the DOL
+-        run: |
+-          make -f Makefile.wii -j"$(nproc)"
+-          test -s riftwii.dol
+-          test -s build_wii/riftwii-unpacked.dol
+-      - name: Plugins match the DOL
+-        run: |
+-          python3 tools/make_plugin.py check --dol build_wii/riftwii-unpacked.dol \
+-            --commit "$(git rev-parse --short=8 HEAD)" build-plugins/plugins/*.rwp
+-      - name: Build the channel
+-        run: make -f Makefile.channel -j"$(nproc)"
+-      - name: Pack the zip and the update pack
+-        run: |
+-          version="${{ steps.version.outputs.version }}"
+-          mkdir -p out
+-          python3 tools/make_release_zip.py --version "$version" --dol riftwii.dol \
+-            --channel build-channel/installer.dol --plugins build-plugins/plugins \
+-            --out "out/riftwii-v$version.zip"
+-          python3 tools/make_update_pack.py "out/riftwii-v$version.zip" out/riftwii-update.pack
+-          cp riftwii.dol out/riftwii.dol
+-          # docs/DEVELOPING.md's check: one plugin per name, with this version.
+-          unzip -l "out/riftwii-v$version.zip" | grep "apps/riftwii/plugins/.*\.$version\.rwp"
+-      - name: Fill in the notes
+-        run: |
+-          python3 tools/release_notes.py render --version "${{ steps.version.outputs.version }}" \
+-            --dol out/riftwii.dol --repo "$GITHUB_REPOSITORY" --role-id "$TESTER_ROLE_ID" \
+-            ${{ inputs.mode == 'publish' && inputs.discord && '--require-role' || '' }} --out texts
+-      - name: Summary
+-        run: |
+-          version="${{ steps.version.outputs.version }}"
+-          {
+-            echo "## RiftWii $version (${{ inputs.mode }})"
+-            echo
+-            echo "Commit \`$(git rev-parse --short=8 HEAD)\`. Files:"
+-            echo
+-            echo '```'
+-            (cd out && sha256sum *)
+-            echo '```'
+-            echo
+-            echo "### Discord message"
+-            echo
+-            echo '````'
+-            cat texts/discord.md
+-            echo '````'
+-            echo
+-            echo "Attached: $(ls texts/discord-images | tr '\n' ' ')"
+-            echo
+-            echo "### Release notes"
+-            echo
+-            cat texts/notes.md
+-          } >> "$GITHUB_STEP_SUMMARY"
+-      # Kept with the run: the files to check by hand after a dry run, and
+-      # the ELFs that name a crash's offsets (docs/DEVELOPING.md).
+-      - uses: actions/upload-artifact@v7
+-        with:
+-          name: riftwii-v${{ steps.version.outputs.version }}
+-          path: |
+-            out/
+-            texts/
+-          if-no-files-found: error
+-      - uses: actions/upload-artifact@v7
+-        with:
+-          name: riftwii-v${{ steps.version.outputs.version }}-elf
+-          path: |
+-            riftwii.elf
+-            build-plugins/*/*.elf
+-          if-no-files-found: warn
+-
+-  publish:
+-    name: Publish
+-    needs: build
+-    if: inputs.mode == 'publish'
+-    runs-on: ubuntu-24.04
+-    timeout-minutes: 10
+-    # The "release" environment holds the Discord secret and can ask for an
+-    # approval before this job runs (Settings > Environments).
+-    environment: release
+-    permissions:
+-      contents: write
+-    env:
+-      VERSION: ${{ needs.build.outputs.version }}
+-      GH_TOKEN: ${{ github.token }}
+-      TESTER_ROLE_ID: ${{ vars.DISCORD_TESTER_ROLE_ID }}
+-    steps:
+-      - uses: actions/checkout@v5
+-      - uses: actions/download-artifact@v8
+-        with:
+-          name: riftwii-v${{ needs.build.outputs.version }}
+-          path: release-files
+-      # Latest and not a pre-release: every RiftWii's update check reads
+-      # /releases/latest (docs/DEVELOPING.md). The tag is made on the commit
+-      # that was built.
+-      # "Re-run failed jobs" after a Discord failure finds the release
+-      # already made from this commit and goes on to Discord.
+-      - name: GitHub release
+-        run: |
+-          if gh release view "v$VERSION" >/dev/null 2>&1; then
+-            tagged=$(git ls-remote origin "refs/tags/v$VERSION" | cut -f1)
+-            if [ "$tagged" = "$GITHUB_SHA" ]; then
+-              echo "::notice::v$VERSION is already published from this commit; not making it again."
+-              exit 0
+-            fi
+-            echo "::error::A release v$VERSION already exists, from another commit."
+-            exit 1
+-          fi
+-          gh release create "v$VERSION" --target "$GITHUB_SHA" --title "RiftWii $VERSION" \
+-            --notes-file release-files/texts/notes.md --latest \
+-            "release-files/out/riftwii-v$VERSION.zip" release-files/out/riftwii.dol release-files/out/riftwii-update.pack
+-          echo "Published $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/v$VERSION" >> "$GITHUB_STEP_SUMMARY"
+-      - name: Discord
+-        if: inputs.discord
+-        env:
+-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
+-        run: |
+-          python3 tools/release_notes.py post --dir release-files/texts --role-id "$TESTER_ROLE_ID"
+-          echo "Posted the testers' message to Discord." >> "$GITHUB_STEP_SUMMARY"
+-
+-  # A published release's Discord message, posted again: the texts are
+-  # filled in from that release's tag and its riftwii.dol, with the tester
+-  # role as it is set now, so a post that went out with a wrong role ID (or
+-  # none) can be replaced. The release itself is left as it is.
+-  repost:
+-    name: Post to Discord again
+-    if: inputs.mode == 'discord-repost'
+-    runs-on: ubuntu-24.04
+-    timeout-minutes: 5
+-    environment: release
+-    permissions:
+-      contents: read
+-    env:
+-      VERSION: ${{ inputs.version }}
+-      GH_TOKEN: ${{ github.token }}
+-      TESTER_ROLE_ID: ${{ vars.DISCORD_TESTER_ROLE_ID }}
+-    steps:
+-      - name: A published release
+-        run: |
+-          if ! echo "$VERSION" | grep -Eq '^[0-9]{4}-[0-9]+$'; then
+-            echo "::error::'$VERSION' is not a YYMM-N version: give the release to post again, e.g. 2610-541."
+-            exit 1
+-          fi
+-          if ! gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+-            echo "::error::There is no published release v$VERSION to post again."
+-            exit 1
+-          fi
+-      - uses: actions/checkout@v5
+-        with:
+-          ref: v${{ inputs.version }}
+-      # The DOL fills in the same SHA-256 and size as the first post's text.
+-      - name: Fill in the message
+-        run: |
+-          gh release download "v$VERSION" --repo "$GITHUB_REPOSITORY" --pattern riftwii.dol --dir release-dol
+-          python3 tools/release_notes.py render --version "$VERSION" --dol release-dol/riftwii.dol \
+-            --repo "$GITHUB_REPOSITORY" --role-id "$TESTER_ROLE_ID" --require-role --out texts
+-          {
+-            echo "## RiftWii $VERSION: Discord message posted again"
+-            echo
+-            echo '````'
+-            cat texts/discord.md
+-            echo '````'
+-            echo
+-            echo "Attached: $(ls texts/discord-images | tr '\n' ' ')"
+-          } >> "$GITHUB_STEP_SUMMARY"
+-      - name: Discord
+-        env:
+-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
+-        run: python3 tools/release_notes.py post --dir texts --role-id "$TESTER_ROLE_ID"
++      - run: echo 'Use Retro USB experimental. v1 Complete is not ready.'
+diff --git a/.github/workflows/retro.yml b/.github/workflows/retro.yml
+new file mode 100644
+index 0000000..24944c6
+--- /dev/null
++++ b/.github/workflows/retro.yml
+@@ -0,0 +1,58 @@
++# SPDX-FileCopyrightText: 2026 RiftWii contributors
++# SPDX-License-Identifier: GPL-3.0-or-later
++name: Retro USB experimental
++on:
++  push:
++    branches: [main]
++    tags: ['v*']
++  workflow_dispatch:
++permissions:
++  contents: write
++jobs:
++  build:
++    runs-on: ubuntu-24.04
++    container: devkitpro/devkitppc@sha256:44cb1a920e1ec3ec7c06767493c3b85f8d643d6137cc4661f0201895ac6e4967
++    steps:
++      - uses: actions/checkout@v5
++        with:
++          fetch-depth: 0
++      - name: Import recovered source and preserve upstream history
++        if: ${{ hashFiles('CMakeLists.txt') == '' }}
++        env:
++          GH_TOKEN: ${{ github.token }}
++        run: bash retro-bootstrap/import.sh
++      - name: Select source
++        shell: bash
++        run: |
++          if [ -f imported/CMakeLists.txt ]; then echo "SOURCE=$PWD/imported" >> "$GITHUB_ENV"; else echo "SOURCE=$PWD" >> "$GITHUB_ENV"; fi
++      - name: Prepare host tools
++        run: apt-get update -qq && apt-get install -y -qq cmake ninja-build zlib1g-dev zstd python3-pip gh && python3 -m pip install --break-system-packages py7zr==1.0.0
++      - name: Compile and test
++        shell: bash
++        run: |
++          set -euo pipefail
++          cd "$SOURCE"
++          cmake -S . -B build-host -G Ninja
++          cmake --build build-host -j4
++          ctest --test-dir build-host -j4 --output-on-failure
++          make -f Makefile.wii -j4 RIFTWII_COMMITS=700 RIFTWII_VERSION=2610-700-retro-alpha RIFTWII_COMMIT=retrodev RIFTWII_BUILD_STAMP=2610-700-retro-alpha-gretrodev
++          python3 tools/make_plugin.py check --dol build_wii/riftwii-unpacked.dol build-plugins/plugins/*.rwp
++          python3 retro-integration/package.py
++      - uses: actions/upload-artifact@v4
++        with:
++          name: Retro-USB-alpha-kit
++          path: ${{ env.SOURCE }}/dist/*
++          if-no-files-found: error
++      - name: Publish experimental tagged release
++        if: success() && !startsWith(github.ref, 'refs/tags/v1.')
++        env:
++          GH_TOKEN: ${{ github.token }}
++          TAG: v0.1.0-alpha.1
++        shell: bash
++        run: |
++          set -euo pipefail
++          command -v gh || { echo 'gh unavailable: artifact is retained; release not published'; exit 1; }
++          gh release create "$TAG" --target "${{ github.sha }}" "$SOURCE"/dist/* --repo danipaises/RiftWii-retro-USB-Only --prerelease --title "Retro USB experimental $TAG" --notes-file "$SOURCE/retro-integration/STATUS.md"
++      - name: Reject premature Complete releases
++        if: startsWith(github.ref, 'refs/tags/v1.')
++        run: echo 'v1 Complete blocked until interface, saves and return requirements are verified'; exit 1
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 8903df8..23ea9c2 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -56,7 +56,7 @@ set_target_properties(riftwii_runtime PROPERTIES C_STANDARD 99 C_STANDARD_REQUIR
+ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+     target_compile_options(riftwii_runtime PRIVATE -ffreestanding -fno-builtin -Wall -Wextra -Wpedantic -Werror)
+ endif()
+-add_library(riftwii STATIC src/patching/patch.cpp src/patching/patchstream.cpp src/patching/overlay.cpp src/patching/source.cpp src/patching/apply.cpp src/patching/expand.cpp src/patching/mempatch.cpp src/patching/launch.cpp src/disc/fst.cpp src/disc/disc.cpp src/patching/redirect.cpp src/fs/fragments.cpp src/fs/fat32.cpp src/fs/cardvolume.cpp src/fs/ntfs.cpp src/fs/imagevolume.cpp src/fs/wbfspart.cpp src/fs/usbgame.cpp src/data/titles.cpp src/art/canvas.cpp src/disc/dol.cpp src/patching/hook.cpp src/patching/symsearch.cpp src/net/riifs.cpp src/net/riifs_sync.cpp src/net/http.cpp src/data/cheats.cpp src/patching/videopatch.cpp src/patching/gamelang.cpp src/patching/riiconfig.cpp src/net/update.cpp src/patching/wfcpatch.cpp src/data/sha1.cpp src/fs/rvz.cpp src/art/coverart.cpp src/art/pngdecode.cpp src/data/settingsfile.cpp src/data/langfile.cpp src/data/playhistory.cpp src/data/gametdb.cpp src/patching/returnto.cpp src/patching/launchargs.cpp src/data/cardlog.cpp src/patching/codehook.cpp src/patching/gameconfig.cpp src/art/pngencode.cpp src/data/shotfile.cpp src/art/qrcode.cpp src/data/problemreport.cpp src/data/gamefault.cpp src/patching/gxpatches.cpp src/patching/ctgpconfig.cpp src/art/theme.cpp src/art/skinpaint.cpp src/art/inputicons.cpp src/art/inputicons_data.cpp src/net/riitag.cpp src/disc/sysfont.cpp src/disc/brfnt.cpp src/patching/vsdparts.cpp src/patching/vsdbuild.cpp src/art/modart.cpp src/disc/bnr.cpp src/disc/bnrsound.cpp src/art/themepack.cpp src/disc/tpl.cpp src/disc/brlyt.cpp src/disc/brlan.cpp src/disc/wiicrypt.cpp src/data/d2xversion.cpp src/data/nandcheck.cpp src/data/offlinegames.cpp src/art/casecolour.cpp src/patching/extrasbudget.cpp src/patching/wpadlog.cpp src/patching/vcdiff.cpp src/patching/gcoverlay.cpp src/patching/gcrequest.cpp src/fs/gccard.cpp src/fs/gccard_text.cpp src/fs/gcbackup.cpp src/fs/gcimport.cpp src/fs/gcreal.cpp src/data/gccrash.cpp src/patching/gclayout.cpp src/patching/gcload.cpp src/patching/gcclock.cpp src/disc/gcbanner.cpp src/data/sharednand.cpp src/data/nandchannel.cpp src/data/wadfile.cpp src/data/homeorder.cpp src/data/profiles.cpp src/data/gccontrols.cpp src/patching/gcvideo.cpp src/patching/gcfont.cpp src/patching/gcdsp.cpp src/patching/gcreset.cpp src/disc/gctgc.cpp src/patching/gcexi.cpp src/patching/gcaram.cpp src/data/stashimage.cpp src/data/sha256.cpp src/data/appmeta.cpp src/data/pluginfile.cpp src/patching/osrestart.cpp src/data/textlines.cpp src/fs/zipread.cpp src/fs/zipstream.cpp src/art/themelist.cpp src/disc/gcdiscs.cpp src/data/ghcheats.cpp src/patching/returnstub.cpp src/data/channelupdate.cpp src/fs/sdhotplug.cpp src/disc/wiisound.cpp src/disc/wiisequence.cpp)
++add_library(riftwii STATIC src/data/retrolibrary.cpp src/patching/patch.cpp src/patching/patchstream.cpp src/patching/overlay.cpp src/patching/source.cpp src/patching/apply.cpp src/patching/expand.cpp src/patching/mempatch.cpp src/patching/launch.cpp src/disc/fst.cpp src/disc/disc.cpp src/patching/redirect.cpp src/fs/fragments.cpp src/fs/fat32.cpp src/fs/cardvolume.cpp src/fs/ntfs.cpp src/fs/imagevolume.cpp src/fs/wbfspart.cpp src/fs/usbgame.cpp src/data/titles.cpp src/art/canvas.cpp src/disc/dol.cpp src/patching/hook.cpp src/patching/symsearch.cpp src/net/riifs.cpp src/net/riifs_sync.cpp src/net/http.cpp src/data/cheats.cpp src/patching/videopatch.cpp src/patching/gamelang.cpp src/patching/riiconfig.cpp src/net/update.cpp src/patching/wfcpatch.cpp src/data/sha1.cpp src/fs/rvz.cpp src/art/coverart.cpp src/art/pngdecode.cpp src/data/settingsfile.cpp src/data/langfile.cpp src/data/playhistory.cpp src/data/gametdb.cpp src/patching/returnto.cpp src/patching/launchargs.cpp src/data/cardlog.cpp src/patching/codehook.cpp src/patching/gameconfig.cpp src/art/pngencode.cpp src/data/shotfile.cpp src/art/qrcode.cpp src/data/problemreport.cpp src/data/gamefault.cpp src/patching/gxpatches.cpp src/patching/ctgpconfig.cpp src/art/theme.cpp src/art/skinpaint.cpp src/art/inputicons.cpp src/art/inputicons_data.cpp src/net/riitag.cpp src/disc/sysfont.cpp src/disc/brfnt.cpp src/patching/vsdparts.cpp src/patching/vsdbuild.cpp src/art/modart.cpp src/disc/bnr.cpp src/disc/bnrsound.cpp src/art/themepack.cpp src/disc/tpl.cpp src/disc/brlyt.cpp src/disc/brlan.cpp src/disc/wiicrypt.cpp src/data/d2xversion.cpp src/data/nandcheck.cpp src/data/offlinegames.cpp src/art/casecolour.cpp src/patching/extrasbudget.cpp src/patching/wpadlog.cpp src/patching/vcdiff.cpp src/patching/gcoverlay.cpp src/patching/gcrequest.cpp src/fs/gccard.cpp src/fs/gccard_text.cpp src/fs/gcbackup.cpp src/fs/gcimport.cpp src/fs/gcreal.cpp src/data/gccrash.cpp src/patching/gclayout.cpp src/patching/gcload.cpp src/patching/gcclock.cpp src/disc/gcbanner.cpp src/data/sharednand.cpp src/data/nandchannel.cpp src/data/wadfile.cpp src/data/homeorder.cpp src/data/profiles.cpp src/data/gccontrols.cpp src/patching/gcvideo.cpp src/patching/gcfont.cpp src/patching/gcdsp.cpp src/patching/gcreset.cpp src/disc/gctgc.cpp src/patching/gcexi.cpp src/patching/gcaram.cpp src/data/stashimage.cpp src/data/sha256.cpp src/data/appmeta.cpp src/data/pluginfile.cpp src/patching/osrestart.cpp src/data/textlines.cpp src/fs/zipread.cpp src/fs/zipstream.cpp src/art/themelist.cpp src/disc/gcdiscs.cpp src/data/ghcheats.cpp src/patching/returnstub.cpp src/data/channelupdate.cpp src/fs/sdhotplug.cpp src/disc/wiisound.cpp src/disc/wiisequence.cpp)
+ target_include_directories(riftwii PUBLIC include PRIVATE runtime/gc)
+ target_link_libraries(riftwii PRIVATE pugixml zstddec ZLIB::ZLIB PUBLIC riftwii_runtime)
+ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+@@ -82,6 +82,13 @@ add_executable(menusound_list tools/menusound_list.cpp)
+ target_link_libraries(menusound_list PRIVATE riftwii)
+ include(CTest)
+ if(BUILD_TESTING)
++    add_executable(retroscan_tests tests/retroscan_tests.cpp wii/storage/retroscan.cpp wii/core/textfile.cpp)
++    target_include_directories(retroscan_tests PRIVATE wii/storage wii/core)
++    target_link_libraries(retroscan_tests PRIVATE riftwii)
++    add_test(NAME retroscan COMMAND retroscan_tests)
++    add_executable(retrolibrary_tests tests/retrolibrary_tests.cpp)
++    target_link_libraries(retrolibrary_tests PRIVATE riftwii)
++    add_test(NAME retrolibrary COMMAND retrolibrary_tests)
+     add_executable(startupusb_tests tests/startupusb_tests.cpp wii/storage/startupusb.cpp)
+     target_include_directories(startupusb_tests PRIVATE tests/wii_mock wii/storage wii/launch wii/core)
+     target_link_libraries(startupusb_tests PRIVATE riftwii)
+diff --git a/NOTICE.md b/NOTICE.md
+index 1f912f9..b5c4b5f 100644
+--- a/NOTICE.md
++++ b/NOTICE.md
+@@ -243,3 +243,11 @@ only (how its choices files and macros work), never copied. Behavioural referenc
+   state machine, the second disc's checks and its MEM2 tables are
+   RiftWii's own. Nintendont is already credited in the README's Credits
+   and `wii/menu/credits.cpp`.
++
++## Retro launcher adapters
++
++Argument protocols were checked in dborth/fceugx 4.0.3, dborth/snes9xgx 5.0.4,
++dborth/vbagx 3.0.4, emukidid/Wii64 1.5.0 and ekeeke/Genesis-Plus-GX at the
++commits in retro-integration/emulators.lock.json. Separate applications keep
++their upstream licenses; no emulator source is linked into the RiftWii DOL.
++Full corresponding source archives accompany their unmodified binaries.
+diff --git a/README-UPSTREAM.md b/README-UPSTREAM.md
+new file mode 100644
+index 0000000..1a4b88a
+--- /dev/null
++++ b/README-UPSTREAM.md
+@@ -0,0 +1,203 @@
++<p align="center">
++  <img src="docs/images/banner.png" alt="RiftWii" width="640">
++</p>
++
++<p align="center">
++  <b>A mod loader for the Wii.</b> Play Riivolution-format mods from the disc, a USB drive or the SD card.
++  <br><br>
++  <a href="https://github.com/KakarottoCake/Riftwii/releases/latest"><b>Download</b></a> ·
++  <a href="docs/GUIDE.md">Guide</a> ·
++  <a href="docs/GUIDE.md#troubleshooting">Troubleshooting</a> ·
++  <a href="https://github.com/KakarottoCake/Riftwii/issues">Report a problem</a> ·
++  <a href="https://discord.gg/gGsTdjjQaK">Discord</a>
++</p>
++
++<table>
++  <tr>
++    <td width="50%"><img src="docs/images/home.png" alt="Home"><br><p align="center">Your games, with covers from GameTDB</p></td>
++    <td width="50%"><img src="docs/images/covers3d.png" alt="3D covers view"><br><p align="center">Or as 3D cases, round a ring</p></td>
++  </tr>
++  <tr>
++    <td><img src="docs/images/carousel.png" alt="Carousel view"><br><p align="center">Fanned out on a carousel</p></td>
++    <td><img src="docs/images/shelf.png" alt="Shelf view"><br><p align="center">On a shelf (the Bookshelf theme)</p></td>
++  </tr>
++  <tr>
++    <td><img src="docs/images/channels.png" alt="Channels view"><br><p align="center">Or as channels, with each game's own icon</p></td>
++    <td><img src="docs/images/channel-banner.png" alt="A game's banner"><br><p align="center">and its banner, as on the Wii Menu</p></td>
++  </tr>
++  <tr>
++    <td><img src="docs/images/game.png" alt="A game's page"><br><p align="center">Each game's own page</p></td>
++    <td><img src="docs/images/mods.png" alt="Mods"><br><p align="center">Turn mod packs on and pick their options</p></td>
++  </tr>
++  <tr>
++    <td><img src="docs/images/cheats.png" alt="Cheats"><br><p align="center">Cheats, downloaded for you</p></td>
++    <td><img src="docs/images/settings.png" alt="Settings"><br><p align="center">Settings</p></td>
++  </tr>
++  <tr>
++    <td><img src="docs/images/midnight.png" alt="The Midnight theme"><br><p align="center">Themes (Midnight)</p></td>
++    <td><img src="docs/images/homemenu.png" alt="HOME Menu"><br><p align="center">A HOME Menu, like the Wii's</p></td>
++  </tr>
++</table>
++
++## Features
++
++- **Mods, no patching.** Riivolution-format packs (the same XML and folders) load into the game as it starts. Your game files are never changed.
++- **Play from anywhere.** The disc, a USB drive (FAT32, NTFS or formatted as WBFS) or the SD card, as WBFS, ISO or Dolphin's RVZ.
++- **WiiWare and Virtual Console.** The channels on your Wii, and those in an emulated NAND on the SD card, are on Home with the rest, with cheats and video settings. WAD files can be installed into that emulated NAND from Settings.
++- **Big mods work.** Pulsar and CT-CODE packs such as CTGP Revolution 1.02 and other Mario Kart Wii distributions (CTGP Revolution 1.03 does not work yet), plus packs over the network from a PC (RiiFS), and Gecko code builds like Project+ and REX without their launchers.
++- **Saves kept apart.** Modded saves can live on the SD card, away from your Wii saves, or in the same emulated NAND as USB Loader GX's.
++- **Per game settings.** Cheats (downloaded for you), picture width, deflicker, borders, video mode (480p, PAL 60), game language and cIOS.
++- **Online play.** Wiimmfi, WiiLink WFC, AltWFC or your own server.
++- **Feels like a Wii.** Covers, names and game details from GameTDB, several ways to show your games (covers, names, 3D cases on a ring, a carousel, a shelf of boxes, or channels with each game's animated icon and banner), your own order (move games around as on the Wii Menu), themes, optional sounds and music read from your own Wii Menu into memory, favourites, recently played, search, letter jumps (hold B and press a direction), a HOME Menu and seven languages (English, Spanish, Japanese, Portuguese, Italian, French and Korean).
++- **Any controller.** Wii Remote, Classic Controller, GameCube controller, the GameCube adapter for Wii U, the Wii U Pro Controller (in games, as a Classic Controller), and USB pads through fakemote.
++- **A Wii Menu channel**, on a Wii or a Wii U, and **updates** from inside RiftWii, always to the latest release.
++- **Problem reports in one step.** When something goes wrong, RiftWii uploads its logs and shows a QR code to send us; no need to take out your SD card.
++- **Experimental:** burned Wii discs, in the Wii's drive or a USB DVD drive.
++
++## Getting started
++
++You need a Wii (or a Wii U in Wii mode) with the Homebrew Channel and a FAT32 SD card. Games on USB or SD need a [d2x cIOS](docs/GUIDE.md#what-you-need).
++
++1. Download the zip from [Releases](https://github.com/KakarottoCake/Riftwii/releases/latest).
++2. Copy its `sd-card` folder to your SD card (and `usb-drive` to your USB drive, if you use one).
++3. Put mod packs in `sd:/riivolution` and games in `wbfs` or `games`.
++4. Start RiftWii from the Homebrew Channel.
++
++Questions, test builds and help are on the [RiftWii Discord](https://discord.gg/gGsTdjjQaK). The [guide](docs/GUIDE.md) covers everything else: each screen, online play, the GameCube adapter, writing packs, and what to send when something goes wrong.
++
++## About AI assistance
++
++Yes, RiftWii was written with AI assistance, and I won't pretend
++otherwise. But it was not vibecoded. Every step was supervised closely,
++because even the best models make terrible calls when you just throw
++them at a project and walk away. Left alone, they suggested "fixes" like
++patching discs at random based on assembly fingerprints to make a
++problem go away, and seemed to think that was fine. I can't imagine what
++a truly vibecoded version of this would look like. The design decisions,
++the testing on real hardware and the refusal to ship shortcuts like that
++are mine.
++
++This is a hobby project. As a kid I wanted to play mods straight from a
++USB drive, and Riivolution never allowed it; its developer was firmly
++against USB loading. RiftWii exists to finally get past that.
++
++## Credits
++
++RiftWii stands on a lot of other people's work. Code that follows or
++contains theirs names them in its file header, and
++[NOTICE.md](NOTICE.md) lists each piece: what it is, where it came from
++(with the commit), and its license.
++
++- **USB Loader GX** (https://github.com/wiidev/usbloadergx, GPL-3.0):
++  the online server patches (`PrivateServerPatcher`, `domainpatcher`),
++  the Wiimmfi patches and Mario Kart Wii security fix, the
++  return-to-channel patch, the language patch, the video mode tables,
++  its fixes for particular games (Kirby's Return to Dream Land's
++  MetaFortress, New Super Mario Bros. Wii, Prince of Persia, Resident
++  Evil 4, Excite Truck, the error #002 and 480p fixes), its automatic
++  cIOS choice, the region strings fix and the aspect ratio, rumble and
++  speaker options, how it keeps saves in d2x's emulated NAND and where
++  it keeps that NAND (for the Saves choice "SD, emulated NAND"), the Wiinnertag file the RiiTag support reads (Dimok,
++  zlib), how to find the Wii Menu's fonts for Settings > Menu font
++  (Dimok, giantpune, blackb0x) and read its bitmap font (giantpune and
++  Dimok, zlib), how to drive d2x's USB device on
++  either USB port (Dimok, Rodries, Kwiirk, zlib), and RiftWii's copy of
++  the Gecko code handler; the channel identity and synthetic ticket layout
++  (dude, Miigotu and Dimok, zlib; source commit in NOTICE.md). Thanks to
++  its developers and everyone whose work it carries: ToadKing
++  (wiilauncher-nossl), Leseratte and the Wiimmfi team, giantpune, Nuke
++  and the GeckoOS authors, crediar, dcx2, container12345, blackb0x and
++  WiiPower.
++- **Gecko OS** by Nuke, brkirch, Link and the Gecko authors: the cheat
++  code handler (full source in [vendor-gecko](vendor-gecko)).
++- **Brainslug** by Alex Chadwick and Florian Bach (MIT): the boot
++  sequence. **wup-028-bslug** by Alex Chadwick (MIT): the GameCube
++  controller adapter.
++- **Nintendont** by FIX94 and contributors: the USB HID driver and the
++  GameCube sound program patches, used with its developers' permission.
++  **WiiDRC** by FIX94: the Wii U GamePad. **dolxz** by FIX94 (MIT): the
++  idea of the packed DOL (RiftWii's own stub and format).
++- **Mario Party 4 community decompilation**: documentation of GameCube font
++  encoding behavior (read only; no code copied).
++- **libwiigui** by Tantric, **FreeTypeGX** by Armin Tamzarian,
++  **oggplayer** and **libasnd** by Hermes: the menu's toolkit, text and music
++    player, and the streaming mixer API reference.
++- **WiiLink WFC** (wfc-patcher-wii): WiiLink online play.
++- **WiiFlow Lite** (https://github.com/Fledge68/WiiFlow_Lite): channel
++  application type and BI2 setup, checked alongside USB Loader GX; RiftWii's
++  boot context and SD mount lifetime also follow the behavior documented by
++  USB Loader GX, d2x and Dolphin (source commits in NOTICE.md).
++- **d2x cIOS**: the USB and SD game loading interface, and how its FAT
++  module mounts and lets go of the SD card for its emulated NAND.
++- **devkitPro and libogc** (Michael Wiedenbauer, Dave Murphy, Hector
++  Martin, Sven Peter and others): the toolchain and the Wii library;
++  libogc also documents the physical GameCube card read protocol, SRAM behavior
++  and MEM1-only EXI DMA, and SD card initialization when IOS cannot do it.
++- **Dolphin**, **wiibrew**, the **Riivolution patch format wiki** and
++  **libruntimeiospatch**: how the Wii, IOS and the patch format behave
++  (read as documentation); Dolphin also for how the Wii Remote extension's
++  encryption key is used (the Pro Controller translator). **libwbfs** by Kwiirk and contributors: the
++  WBFS drive layout. **Friivolution** by december: the launch argument
++  other loaders pass (both read as documentation, nothing copied).
++- **projectPiki's Pikmin 2 decompilation**: GameCube SDK controller
++  lifecycle behaviour, read as documentation; no code copied.
++- **The Mario Kart: Double Dash!! decompilation** (doldecomp): how the
++  game asks SIProbe before it reads a controller port, read as
++  documentation; no code copied.
++- **pugixml** by Arseny Kapoulkine, **Zstandard** by Meta, **BearSSL**
++  by Thomas Pornin, **FreeType**, **zlib**, **Tremor**.
++- **GameTDB** for game names and covers, **RiiConnect24** for the cheat
++  archive, **GameHacking.org** for the cheat codes RiiConnect24's archive
++  lacks (fetched at most once a month, when a game needs them), **M+ Fonts** for the menu font, **Zane Little** for the menu
++  music, **Kenney** (kenney.nl) for the controller and button pictures.
++- **Animated GameCube banners**: the community's banners, hosted by
++  RiiConnect24 (banner.rc24.xyz).
++- **DDinghoya** for the Korean translation, **MidyGamy** for the French
++  one.
++
++## License
++
++GPL-3.0-or-later ([LICENSE](LICENSE)). RiftWii contains no Riivolution
++code. Its third-party components, their origins and licenses are in
++[NOTICE.md](NOTICE.md). Each release zip carries `LICENSE.txt`,
++`NOTICE.md` and `SOURCE.txt` (which commit of this repository it was
++built from), and RiftWii shows its license and credits in Settings >
++Credits and license.
++
++### A note for the license enthusiasts
++
++Good news: RiftWii follows the GPL to the letter, and then some. For
++anyone who needs it spelled out:
++
++- Every file that follows someone else's work says so at the top, with
++  the project, the file and the functions.
++- [NOTICE.md](NOTICE.md) lists every component, where it came from (down
++  to the commit) and its license.
++- Every release zip carries the full license, the notices and the exact
++  commit it was built from.
++- The Gecko code handler ships with its assembly source, which rebuilds
++  it byte for byte. That's more than most Wii loaders bother with.
++- RiftWii itself will show you all ~840 lines of the GPL, in Settings >
++  Credits and license. Scrolling to the end is left as an exercise for
++  the reader.
++
++If you still think something is missing a credit, open an
++[issue](https://github.com/KakarottoCake/Riftwii/issues). It'll be
++fixed, politely, and probably faster than it took to write the comment.
++
++This is a free hobby project that loads mods into games for a console
++from 2006. It's not that serious.
++
++Developers and forks: start with [docs/MAP.md](docs/MAP.md) (every file, and
++where each feature lives), then [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
++and [docs/DEVELOPING.md](docs/DEVELOPING.md).
++
++## Disclaimer
++
++I don't condone piracy. RiftWii doesn't come with any games and won't
++download them for you. Play your own games: discs you own, or backups you
++made from them yourself.
++
++RiftWii exists for preservation, and to move Wii development forward:
++out of the stone age of needing an aging disc in an aging drive every
++time you want to play.
+diff --git a/README.md b/README.md
+index 1a4b88a..5925664 100644
+--- a/README.md
++++ b/README.md
+@@ -1,203 +1,46 @@
+-<p align="center">
+-  <img src="docs/images/banner.png" alt="RiftWii" width="640">
+-</p>
++# RiftWii Retro USB-Only — alfa em desenvolvimento
+ 
+-<p align="center">
+-  <b>A mod loader for the Wii.</b> Play Riivolution-format mods from the disc, a USB drive or the SD card.
+-  <br><br>
+-  <a href="https://github.com/KakarottoCake/Riftwii/releases/latest"><b>Download</b></a> ·
+-  <a href="docs/GUIDE.md">Guide</a> ·
+-  <a href="docs/GUIDE.md#troubleshooting">Troubleshooting</a> ·
+-  <a href="https://github.com/KakarottoCake/Riftwii/issues">Report a problem</a> ·
+-  <a href="https://discord.gg/gGsTdjjQaK">Discord</a>
+-</p>
++Projeto exclusivo: https://github.com/danipaises/RiftWii-retro-USB-Only
+ 
+-<table>
+-  <tr>
+-    <td width="50%"><img src="docs/images/home.png" alt="Home"><br><p align="center">Your games, with covers from GameTDB</p></td>
+-    <td width="50%"><img src="docs/images/covers3d.png" alt="3D covers view"><br><p align="center">Or as 3D cases, round a ring</p></td>
+-  </tr>
+-  <tr>
+-    <td><img src="docs/images/carousel.png" alt="Carousel view"><br><p align="center">Fanned out on a carousel</p></td>
+-    <td><img src="docs/images/shelf.png" alt="Shelf view"><br><p align="center">On a shelf (the Bookshelf theme)</p></td>
+-  </tr>
+-  <tr>
+-    <td><img src="docs/images/channels.png" alt="Channels view"><br><p align="center">Or as channels, with each game's own icon</p></td>
+-    <td><img src="docs/images/channel-banner.png" alt="A game's banner"><br><p align="center">and its banner, as on the Wii Menu</p></td>
+-  </tr>
+-  <tr>
+-    <td><img src="docs/images/game.png" alt="A game's page"><br><p align="center">Each game's own page</p></td>
+-    <td><img src="docs/images/mods.png" alt="Mods"><br><p align="center">Turn mod packs on and pick their options</p></td>
+-  </tr>
+-  <tr>
+-    <td><img src="docs/images/cheats.png" alt="Cheats"><br><p align="center">Cheats, downloaded for you</p></td>
+-    <td><img src="docs/images/settings.png" alt="Settings"><br><p align="center">Settings</p></td>
+-  </tr>
+-  <tr>
+-    <td><img src="docs/images/midnight.png" alt="The Midnight theme"><br><p align="center">Themes (Midnight)</p></td>
+-    <td><img src="docs/images/homemenu.png" alt="HOME Menu"><br><p align="center">A HOME Menu, like the Wii's</p></td>
+-  </tr>
+-</table>
++A base USB-only anterior foi recuperada com fontes e DOL preservados. Esta
++integração retrô é nova, experimental e não foi testada no Wii físico.
++Leia [o estado real e as pendências](retro-integration/STATUS.md).
+ 
+-## Features
++## Instalação e atualização
+ 
+-- **Mods, no patching.** Riivolution-format packs (the same XML and folders) load into the game as it starts. Your game files are never changed.
+-- **Play from anywhere.** The disc, a USB drive (FAT32, NTFS or formatted as WBFS) or the SD card, as WBFS, ISO or Dolphin's RVZ.
+-- **WiiWare and Virtual Console.** The channels on your Wii, and those in an emulated NAND on the SD card, are on Home with the rest, with cheats and video settings. WAD files can be installed into that emulated NAND from Settings.
+-- **Big mods work.** Pulsar and CT-CODE packs such as CTGP Revolution 1.02 and other Mario Kart Wii distributions (CTGP Revolution 1.03 does not work yet), plus packs over the network from a PC (RiiFS), and Gecko code builds like Project+ and REX without their launchers.
+-- **Saves kept apart.** Modded saves can live on the SD card, away from your Wii saves, or in the same emulated NAND as USB Loader GX's.
+-- **Per game settings.** Cheats (downloaded for you), picture width, deflicker, borders, video mode (480p, PAL 60), game language and cIOS.
+-- **Online play.** Wiimmfi, WiiLink WFC, AltWFC or your own server.
+-- **Feels like a Wii.** Covers, names and game details from GameTDB, several ways to show your games (covers, names, 3D cases on a ring, a carousel, a shelf of boxes, or channels with each game's animated icon and banner), your own order (move games around as on the Wii Menu), themes, optional sounds and music read from your own Wii Menu into memory, favourites, recently played, search, letter jumps (hold B and press a direction), a HOME Menu and seven languages (English, Spanish, Japanese, Portuguese, Italian, French and Korean).
+-- **Any controller.** Wii Remote, Classic Controller, GameCube controller, the GameCube adapter for Wii U, the Wii U Pro Controller (in games, as a Classic Controller), and USB pads through fakemote.
+-- **A Wii Menu channel**, on a Wii or a Wii U, and **updates** from inside RiftWii, always to the latest release.
+-- **Problem reports in one step.** When something goes wrong, RiftWii uploads its logs and shows a QR code to send us; no need to take out your SD card.
+-- **Experimental:** burned Wii discs, in the Wii's drive or a USB DVD drive.
++Faça backup do pendrive. Extraia o kit na raiz de um USB FAT32. Não substitua
++suas configurações nem saves. Os templates têm nomes .example diferentes.
++Coloque suas ROMs em retro/<plataforma> e abra Aplicativos no RiftWii.
++Sem ROMs, a lista permanece vazia e utilizável. Jogos Wii ficam em wbfs;
++GameCube mantém a integração e as limitações anteriores.
+ 
+-## Getting started
++Não instale WADs, não altere IOS246 nem instale cIOS para testar esta alfa.
++No emulador selecione sair para o loader; quando o canal RiftWii não existir,
++o retorno usa o fallback HBC/Menu Wii. Não existe promessa de retorno de todos
++os emuladores antes do teste físico.
+ 
+-You need a Wii (or a Wii U in Wii mode) with the Homebrew Channel and a FAT32 SD card. Games on USB or SD need a [d2x cIOS](docs/GUIDE.md#what-you-need).
++## Compilar sem Docker local
+ 
+-1. Download the zip from [Releases](https://github.com/KakarottoCake/Riftwii/releases/latest).
+-2. Copy its `sd-card` folder to your SD card (and `usb-drive` to your USB drive, if you use one).
+-3. Put mod packs in `sd:/riivolution` and games in `wbfs` or `games`.
+-4. Start RiftWii from the Homebrew Channel.
++Instale devkitPro/devkitPPC e portlibs descritos em docs/USB_ONLY.md.
++`bash tools/build_usb_only.sh` compila a aplicação e os testes. Para o kit,
++instale py7zr e execute `python3 retro-integration/package.py` após o build.
++Emuladores são integrados a partir dos releases/binários fixados no lock,
++não apresentados como recompilados. Fontes correspondentes acompanham o kit.
+ 
+-Questions, test builds and help are on the [RiftWii Discord](https://discord.gg/gGsTdjjQaK). The [guide](docs/GUIDE.md) covers everything else: each screen, online play, the GameCube adapter, writing packs, and what to send when something goes wrong.
++## Teste físico pendente
+ 
+-## About AI assistance
++Para cada plataforma NES/SNES/GB/GBC/GBA/N64/MS/MD/GG/SG1000/CD, use uma ROM
++homebrew com licença redistribuível obtida do próprio autor e registre URL,
++licença, hash, desempenho, controles, save, state, saída e retorno. Não foi
++selecionada ainda uma amostra legal validada para cada sistema. Sem SD:
++RiftWii → jogo → RiftWii → outro jogo, por três ciclos. Teste também Wii e GC.
++Antes de atualizar, preserve apps/riftwii e as pastas de saves de cada emulador.
+ 
+-Yes, RiftWii was written with AI assistance, and I won't pretend
+-otherwise. But it was not vibecoded. Every step was supervised closely,
+-because even the best models make terrible calls when you just throw
+-them at a project and walk away. Left alone, they suggested "fixes" like
+-patching discs at random based on assembly fingerprints to make a
+-problem go away, and seemed to think that was fine. I can't imagine what
+-a truly vibecoded version of this would look like. The design decisions,
+-the testing on real hardware and the refusal to ship shortcuts like that
+-are mine.
++## Licenças e autoria
+ 
+-This is a hobby project. As a kid I wanted to play mods straight from a
+-USB drive, and Riivolution never allowed it; its developer was firmly
+-against USB loading. RiftWii exists to finally get past that.
+-
+-## Credits
+-
+-RiftWii stands on a lot of other people's work. Code that follows or
+-contains theirs names them in its file header, and
+-[NOTICE.md](NOTICE.md) lists each piece: what it is, where it came from
+-(with the commit), and its license.
+-
+-- **USB Loader GX** (https://github.com/wiidev/usbloadergx, GPL-3.0):
+-  the online server patches (`PrivateServerPatcher`, `domainpatcher`),
+-  the Wiimmfi patches and Mario Kart Wii security fix, the
+-  return-to-channel patch, the language patch, the video mode tables,
+-  its fixes for particular games (Kirby's Return to Dream Land's
+-  MetaFortress, New Super Mario Bros. Wii, Prince of Persia, Resident
+-  Evil 4, Excite Truck, the error #002 and 480p fixes), its automatic
+-  cIOS choice, the region strings fix and the aspect ratio, rumble and
+-  speaker options, how it keeps saves in d2x's emulated NAND and where
+-  it keeps that NAND (for the Saves choice "SD, emulated NAND"), the Wiinnertag file the RiiTag support reads (Dimok,
+-  zlib), how to find the Wii Menu's fonts for Settings > Menu font
+-  (Dimok, giantpune, blackb0x) and read its bitmap font (giantpune and
+-  Dimok, zlib), how to drive d2x's USB device on
+-  either USB port (Dimok, Rodries, Kwiirk, zlib), and RiftWii's copy of
+-  the Gecko code handler; the channel identity and synthetic ticket layout
+-  (dude, Miigotu and Dimok, zlib; source commit in NOTICE.md). Thanks to
+-  its developers and everyone whose work it carries: ToadKing
+-  (wiilauncher-nossl), Leseratte and the Wiimmfi team, giantpune, Nuke
+-  and the GeckoOS authors, crediar, dcx2, container12345, blackb0x and
+-  WiiPower.
+-- **Gecko OS** by Nuke, brkirch, Link and the Gecko authors: the cheat
+-  code handler (full source in [vendor-gecko](vendor-gecko)).
+-- **Brainslug** by Alex Chadwick and Florian Bach (MIT): the boot
+-  sequence. **wup-028-bslug** by Alex Chadwick (MIT): the GameCube
+-  controller adapter.
+-- **Nintendont** by FIX94 and contributors: the USB HID driver and the
+-  GameCube sound program patches, used with its developers' permission.
+-  **WiiDRC** by FIX94: the Wii U GamePad. **dolxz** by FIX94 (MIT): the
+-  idea of the packed DOL (RiftWii's own stub and format).
+-- **Mario Party 4 community decompilation**: documentation of GameCube font
+-  encoding behavior (read only; no code copied).
+-- **libwiigui** by Tantric, **FreeTypeGX** by Armin Tamzarian,
+-  **oggplayer** and **libasnd** by Hermes: the menu's toolkit, text and music
+-    player, and the streaming mixer API reference.
+-- **WiiLink WFC** (wfc-patcher-wii): WiiLink online play.
+-- **WiiFlow Lite** (https://github.com/Fledge68/WiiFlow_Lite): channel
+-  application type and BI2 setup, checked alongside USB Loader GX; RiftWii's
+-  boot context and SD mount lifetime also follow the behavior documented by
+-  USB Loader GX, d2x and Dolphin (source commits in NOTICE.md).
+-- **d2x cIOS**: the USB and SD game loading interface, and how its FAT
+-  module mounts and lets go of the SD card for its emulated NAND.
+-- **devkitPro and libogc** (Michael Wiedenbauer, Dave Murphy, Hector
+-  Martin, Sven Peter and others): the toolchain and the Wii library;
+-  libogc also documents the physical GameCube card read protocol, SRAM behavior
+-  and MEM1-only EXI DMA, and SD card initialization when IOS cannot do it.
+-- **Dolphin**, **wiibrew**, the **Riivolution patch format wiki** and
+-  **libruntimeiospatch**: how the Wii, IOS and the patch format behave
+-  (read as documentation); Dolphin also for how the Wii Remote extension's
+-  encryption key is used (the Pro Controller translator). **libwbfs** by Kwiirk and contributors: the
+-  WBFS drive layout. **Friivolution** by december: the launch argument
+-  other loaders pass (both read as documentation, nothing copied).
+-- **projectPiki's Pikmin 2 decompilation**: GameCube SDK controller
+-  lifecycle behaviour, read as documentation; no code copied.
+-- **The Mario Kart: Double Dash!! decompilation** (doldecomp): how the
+-  game asks SIProbe before it reads a controller port, read as
+-  documentation; no code copied.
+-- **pugixml** by Arseny Kapoulkine, **Zstandard** by Meta, **BearSSL**
+-  by Thomas Pornin, **FreeType**, **zlib**, **Tremor**.
+-- **GameTDB** for game names and covers, **RiiConnect24** for the cheat
+-  archive, **GameHacking.org** for the cheat codes RiiConnect24's archive
+-  lacks (fetched at most once a month, when a game needs them), **M+ Fonts** for the menu font, **Zane Little** for the menu
+-  music, **Kenney** (kenney.nl) for the controller and button pictures.
+-- **Animated GameCube banners**: the community's banners, hosted by
+-  RiiConnect24 (banner.rc24.xyz).
+-- **DDinghoya** for the Korean translation, **MidyGamy** for the French
+-  one.
+-
+-## License
+-
+-GPL-3.0-or-later ([LICENSE](LICENSE)). RiftWii contains no Riivolution
+-code. Its third-party components, their origins and licenses are in
+-[NOTICE.md](NOTICE.md). Each release zip carries `LICENSE.txt`,
+-`NOTICE.md` and `SOURCE.txt` (which commit of this repository it was
+-built from), and RiftWii shows its license and credits in Settings >
+-Credits and license.
+-
+-### A note for the license enthusiasts
+-
+-Good news: RiftWii follows the GPL to the letter, and then some. For
+-anyone who needs it spelled out:
+-
+-- Every file that follows someone else's work says so at the top, with
+-  the project, the file and the functions.
+-- [NOTICE.md](NOTICE.md) lists every component, where it came from (down
+-  to the commit) and its license.
+-- Every release zip carries the full license, the notices and the exact
+-  commit it was built from.
+-- The Gecko code handler ships with its assembly source, which rebuilds
+-  it byte for byte. That's more than most Wii loaders bother with.
+-- RiftWii itself will show you all ~840 lines of the GPL, in Settings >
+-  Credits and license. Scrolling to the end is left as an exercise for
+-  the reader.
+-
+-If you still think something is missing a credit, open an
+-[issue](https://github.com/KakarottoCake/Riftwii/issues). It'll be
+-fixed, politely, and probably faster than it took to write the comment.
+-
+-This is a free hobby project that loads mods into games for a console
+-from 2006. It's not that serious.
+-
+-Developers and forks: start with [docs/MAP.md](docs/MAP.md) (every file, and
+-where each feature lives), then [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+-and [docs/DEVELOPING.md](docs/DEVELOPING.md).
+-
+-## Disclaimer
+-
+-I don't condone piracy. RiftWii doesn't come with any games and won't
+-download them for you. Play your own games: discs you own, or backups you
+-made from them yourself.
+-
+-RiftWii exists for preservation, and to move Wii development forward:
+-out of the stone age of needing an aging disc in an aging drive every
+-time you want to play.
++RiftWii: KakarottoCake e colaboradores, GPL-3.0-or-later. Veja LICENSE,
++NOTICE.md e README-UPSTREAM.md. FCE Ultra GX, Snes9x GX, VBA GX: dborth e
++respectivos autores; Wii64: Team Wii64; Genesis Plus GX: Eke-Eke e demais
++autores. Cada componente mantém sua licença própria, incluída nas fontes.
++O kit que inclui Genesis Plus GX não pode ser vendido ou usado comercialmente.
++Nenhuma ROM comercial, BIOS proprietária ou instalador de canal é incluído.
+diff --git a/include/riftwii/retrolibrary.hpp b/include/riftwii/retrolibrary.hpp
+new file mode 100644
+index 0000000..b4a0230
+--- /dev/null
++++ b/include/riftwii/retrolibrary.hpp
+@@ -0,0 +1,12 @@
++// SPDX-FileCopyrightText: 2026 RiftWii contributors
++// SPDX-License-Identifier: GPL-3.0-or-later
++#pragma once
++#include <string>
++#include <vector>
++namespace riftwii::retro {
++struct Platform { const char* id; const char* title; const char* emulator; const char* extensions; };
++const std::vector<Platform>& platforms();
++bool accepts(const Platform&, const std::string& path);
++struct Launch { std::string program; std::vector<std::string> arguments; std::string error; };
++Launch prepare(const Platform&, const std::string& rom, const std::string& n64 = "gln64");
++}
+diff --git a/retro-integration/STATUS.md b/retro-integration/STATUS.md
+new file mode 100644
+index 0000000..fe79dc6
+--- /dev/null
++++ b/retro-integration/STATUS.md
+@@ -0,0 +1,36 @@
++# Estado real — implementação alfa
++
++Base USB-only recuperada do pacote 2610-699, fontes originais bb84fb1a e
++base oficial 21172fe07123e8facb2f488332f5c0b174989997. O relato do usuário
++confirma a base no Wii, não esta integração nova.
++
++Implementado: catálogo USB limitado a 512 entradas, 11 plataformas com IDs
++separados, extensões por plataforma, scanner vazio seguro, adaptadores GX e
++Wii64 glN64/Rice, validação de caminho e emulador, arte local e retorno pelo
++stub existente preferindo o canal RiftWii. Catálogo aparece em Aplicativos /
++Homebrew, com prefixo de console e busca existente. Capas são PNGs em
++retro/covers/<plataforma>/<nome completo da ROM>.png. Ausência usa fallback.
++Atualização do catálogo pelo botão de atualizar existente. Diretórios não
++são recursivos nesta alfa. Escolha N64: retro/n64/emulator.txt, gln64 ou rice.
++A escolha deve ser criada manualmente; o exemplo não sobrescreve preferências.
++
++Pendentes: tela própria com categorias selecionáveis, favoritos e recentes
++retrô completos, escolha N64 na interface, atualização automática incremental,
++validação de saves/state e retorno reais. Os binários GX possuem autoload que
++procura substrings de nomes: nomes sobrepostos podem selecionar outro jogo.
++O launcher bloqueia nomes ambíguos antes da inicialização; comparação exata no emulador ainda pendente.
++Not64 não é integrado ao autoboot: o código inspecionado lê pares de opções,
++e não foi validado um caminho de ROM único. 32X não habilitado: não houve
++confirmação física do núcleo Wii. Sega CD exige as três BIOS regionais por
++prudência; validação por jogo/região e hash de BIOS ainda pendente.
++
++GameCube permanece com as limitações da base USB-only: memory cards do
++backend interno dependem de SD. Não é alegado GameCube USB-only completo.
++Não se removeu o suporte existente nem se substituiu pelo RiftWii oficial.
++
++Fakemote IOS246 não é instalado/alterado. Emuladores podem recarregar IOS58;
++compatibilidade Fakemote não é confirmada. Wii Remote, Nunchuk, Classic e GC
++constam nas implementações upstream, mas não foram testados neste kit.
++
++Não chamar este pacote de v1.0.0 Complete. Publicação permitida apenas como
++alfa experimental após compilação, testes e verificação de todos os binários.
+diff --git a/retro-integration/emulators.lock.json b/retro-integration/emulators.lock.json
+new file mode 100644
+index 0000000..6d21b1c
+--- /dev/null
++++ b/retro-integration/emulators.lock.json
+@@ -0,0 +1,36 @@
++[
++  {
++    "repo": "dborth/fceugx",
++    "tag": "4.0.3",
++    "commit": "afb7097bd7ce22b4e959699dc76a568ba31e05a2",
++    "asset": "https://github.com/dborth/fceugx/releases/download/4.0.3/FCEUltraGX-4.0.3-Wii.zip",
++    "sha256": "ab165ba029c9dbe26e15eff7d92af2217257ff52eb55df2afc4549d02a5e9f52"
++  },
++  {
++    "repo": "dborth/snes9xgx",
++    "tag": "5.0.4",
++    "commit": "3cf52bd04eed33c8f3428e675017ebfc18f107ba",
++    "asset": "https://github.com/dborth/snes9xgx/releases/download/5.0.4/Snes9xGX-5.0.4-Wii.zip",
++    "sha256": "16aaf66490369adddaa8151b0534046e1c2105a073ae4a608a978f557021226f"
++  },
++  {
++    "repo": "dborth/vbagx",
++    "tag": "3.0.4",
++    "commit": "5460f1f6c993b5dac707fc70e6f335bba0ba6d94",
++    "asset": "https://github.com/dborth/vbagx/releases/download/3.0.4/VisualBoyAdvanceGX-3.0.4-Wii.zip",
++    "sha256": "f5e9a4df170b4ee6fd1d5cfa783a48986c184dedd7ca7e5fca6731705fd9b363"
++  },
++  {
++    "repo": "emukidid/Wii64",
++    "tag": "1.5.0",
++    "commit": "a96d9758a1d15a72577a5546c66068f627ea21bd",
++    "asset": "https://github.com/emukidid/Wii64/releases/download/1.5.0/wii64-1.5.0.7z",
++    "sha256": "a6b0efe2db9007180cd2846298fcc6bdf1c34aeb035d423c30f6a99c3cb79b83"
++  },
++  {
++    "repo": "ekeeke/Genesis-Plus-GX",
++    "commit": "49c584764893b0505ac7f768a754f97330fa4392",
++    "asset": "https://raw.githubusercontent.com/ekeeke/Genesis-Plus-GX/49c584764893b0505ac7f768a754f97330fa4392/builds/genplus_wii.dol",
++    "sha256": "12236514a25b438af58411b4bb18490df8a7f13ec96987df2e47a8cba58933c6"
++  }
++]
+diff --git a/retro-integration/package.py b/retro-integration/package.py
+new file mode 100644
+index 0000000..69a3de0
+--- /dev/null
++++ b/retro-integration/package.py
+@@ -0,0 +1,85 @@
++# SPDX-FileCopyrightText: 2026 RiftWii contributors
++# SPDX-License-Identifier: GPL-3.0-or-later
++"""Build a noncommercial alpha kit; never overwrite user saves/settings."""
++import hashlib,json,os,pathlib,shutil,subprocess,tempfile,urllib.request,zipfile
++import py7zr
++ROOT=pathlib.Path(__file__).resolve().parents[1]
++OUT=ROOT/'dist';OUT.mkdir(exist_ok=True)
++LOCK=json.loads((ROOT/'retro-integration/emulators.lock.json').read_text())
++def download(url,path):
++    if not path.exists():
++        with urllib.request.urlopen(url,timeout=120) as r,open(path,'wb') as f:shutil.copyfileobj(r,f)
++    return path
++with tempfile.TemporaryDirectory() as work:
++    stage=pathlib.Path(work)/'usb';stage.mkdir()
++    cache=ROOT/'build-downloads';cache.mkdir(exist_ok=True)
++    for name in ['nes','snes','gb','gbc','gba','n64','master-system','mega-drive','game-gear','sg1000','sega-cd','sega-32x','covers']:
++        d=stage/'retro'/name;d.mkdir(parents=True)
++        (d/'README.txt').write_text('Use somente seus arquivos legalmente obtidos. Diretório de ROMs vazio.\n')
++    for item in LOCK:
++        asset=download(item['asset'],cache/item['asset'].split('/')[-1])
++        if hashlib.sha256(asset.read_bytes()).hexdigest()!=item['sha256']:raise ValueError('Asset checksum mismatch: '+item['repo'])
++        extracted=pathlib.Path(work)/item['repo'].split('/')[-1];extracted.mkdir()
++        if asset.suffix=='.zip':
++            with zipfile.ZipFile(asset) as z:
++                for n in z.namelist():
++                    p=pathlib.PurePosixPath(n)
++                    if p.is_absolute() or '..' in p.parts:raise ValueError('Unsafe asset path')
++                z.extractall(extracted)
++        elif asset.suffix=='.7z':
++            with py7zr.SevenZipFile(asset) as z:
++                if any(pathlib.PurePosixPath(n).is_absolute() or '..' in pathlib.PurePosixPath(n).parts for n in z.getnames()):raise ValueError('Unsafe archive')
++                z.extractall(extracted)
++        else:
++            d=extracted/'apps/genplusgx';d.mkdir(parents=True);shutil.copy2(asset,d/'boot.dol')
++        # Only normal Wii applications; exclude installers and WiiVC builds.
++        for app in (extracted/'apps').glob('*'):
++            if app.name.endswith('_wiivc'):continue
++            target={'wii64':'wii64-gln64','wii64 Rice':'wii64-rice'}.get(app.name,app.name)
++            if target not in ['fceugx','snes9xgx','vbagx','genplusgx','wii64-gln64','wii64-rice']:continue
++            for f in app.iterdir():
++                if f.name not in ['boot.dol','icon.png','meta.xml']:continue
++                dest=stage/'apps'/target/f.name;dest.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(f,dest)
++        for f in (extracted/'wii64').glob('*'):
++            if f.is_file() and f.name in ['boxart.bin','RiceVideoLinux.ini']:
++                d=stage/'wii64';d.mkdir(exist_ok=True);shutil.copy2(f,d/f.name)
++        # Corresponding full source accompanies binaries, with upstream licenses.
++        sources=stage/'sources';sources.mkdir(exist_ok=True)
++        archive=download('https://codeload.github.com/'+item['repo']+'/tar.gz/'+item['commit'],cache/(item['repo'].split('/')[-1]+'-'+item['commit']+'.tar.gz'))
++        shutil.copy2(archive,sources/archive.name)
++    for folder in ['fceugx/saves','snes9xgx/saves','vbagx/saves','wii64/saves','genplus/bios','genplus/saves/md','genplus/saves/ms','genplus/saves/gg','genplus/saves/sg','genplus/saves/cd','riftwii/logs','wbfs','games']:
++        (stage/folder).mkdir(parents=True,exist_ok=True)
++    (stage/'genplus/bios/README.txt').write_text('BIOS proprietárias não são incluídas. Forneça legalmente bios_CD_U.bin, bios_CD_E.bin e bios_CD_J.bin. Sega CD ficará bloqueado na ausência delas.\n')
++    # Template has a different name: updates cannot overwrite existing settings.
++    (stage/'wii64/settings-USB.example.cfg').write_text('NativeDevice = 1\nAutoSave = 1\n')
++    (stage/'retro/n64/emulator.example.txt').write_text('gln64\n')
++    app=stage/'apps/riftwii';app.mkdir(parents=True,exist_ok=True)
++    shutil.copy2(ROOT/'riftwii.dol',app/'boot.dol')
++    for f in (ROOT/'build-plugins/plugins').glob('*.rwp'):
++        d=app/'plugins';d.mkdir(exist_ok=True);shutil.copy2(f,d/f.name)
++    shutil.copy2(ROOT/'wii/font/rounded.ttf',app/'font.ttf')
++    shutil.copy2(ROOT/'hbc/music.ogg',app/'music.ogg')
++    for f in ['icon.png','meta.xml']:
++        source=ROOT/'hbc'/f
++        if f=='icon.png':shutil.copy2(source,app/f)
++    (app/'meta.xml').write_text('<app version="1"><name>RiftWii Retro USB alpha</name><version>0.1.0-alpha</version><ahb_access /></app>')
++    for f in ['README.md','LICENSE','NOTICE.md'] :shutil.copy2(ROOT/f,stage/f)
++    shutil.copy2(ROOT/'retro-integration/emulators.lock.json',stage/'sources/emulators.lock.json')
++    subprocess.run(['git','archive','--format=tar.gz','-o',str(stage/'sources/riftwii-source.tar.gz'),'HEAD'],cwd=ROOT,check=True)
++    required=['riftwii','fceugx','snes9xgx','vbagx','genplusgx','wii64-gln64','wii64-rice']
++    for name in required:
++        f=stage/'apps'/name/'boot.dol'
++        if not f.is_file() or f.stat().st_size<256:raise ValueError('Missing emulator: '+name)
++    for f in stage.rglob('*'):
++        if not f.is_file():continue
++        if (f.suffix.lower() == '.md' and f.relative_to(stage).parts[0] == 'retro') or f.suffix.lower() in ['.wad','.nes','.sfc','.smc','.gb','.gbc','.gba','.z64','.n64','.v64','.iso','.wbfs','.cue','.gg','.sms','.32x'] or f.name.startswith('bios_CD_'):raise ValueError('Forbidden ROM/BIOS/installer: '+str(f))
++    manifest=''.join(hashlib.sha256(f.read_bytes()).hexdigest()+'  '+f.relative_to(stage).as_posix()+'\n' for f in sorted(stage.rglob('*')) if f.is_file())
++    (stage/'SHA256SUMS.txt').write_text(manifest)
++    target=OUT/'RiftWii-Retro-USB-Only-v0.1.0-alpha-Kit.zip'
++    with open(str(target)+'.tmp','wb') as raw:
++        with zipfile.ZipFile(raw,'w',zipfile.ZIP_DEFLATED) as z:
++            for f in sorted(stage.rglob('*')):z.write(f,f.relative_to(stage).as_posix())
++        raw.flush();os.fsync(raw.fileno())
++    os.replace(str(target)+'.tmp',target)
++    (OUT/'SHA256SUMS.txt').write_text(hashlib.sha256(target.read_bytes()).hexdigest()+'  '+target.name+'\n')
++    print(target)
+diff --git a/src/data/retrolibrary.cpp b/src/data/retrolibrary.cpp
+new file mode 100644
+index 0000000..b9078bd
+--- /dev/null
++++ b/src/data/retrolibrary.cpp
+@@ -0,0 +1,57 @@
++// SPDX-FileCopyrightText: 2026 RiftWii contributors
++// SPDX-License-Identifier: GPL-3.0-or-later
++#include "riftwii/retrolibrary.hpp"
++#include <algorithm>
++#include <cctype>
++namespace riftwii::retro {
++const std::vector<Platform>& platforms() {
++    static const std::vector<Platform> value = {
++        {"nes", "NES", "fceugx", ".nes|.fds"},
++        {"snes", "SNES", "snes9xgx", ".sfc|.smc"},
++        {"gb", "Game Boy", "vbagx", ".gb"},
++        {"gbc", "Game Boy Color", "vbagx", ".gbc"},
++        {"gba", "Game Boy Advance", "vbagx", ".gba"},
++        {"n64", "Nintendo 64", "wii64", ".z64|.n64|.v64"},
++        {"master-system", "Master System", "genplusgx", ".sms"},
++        {"mega-drive", "Mega Drive", "genplusgx", ".md|.gen|.bin|.smd"},
++        {"game-gear", "Game Gear", "genplusgx", ".gg"},
++        {"sg1000", "SG-1000", "genplusgx", ".sg"},
++        {"sega-cd", "Sega CD", "genplusgx", ".cue|.chd|.iso"},
++    };
++    return value;
++}
++bool accepts(const Platform& platform, const std::string& path) {
++    const auto dot = path.find_last_of('.');
++    if (dot == std::string::npos) return false;
++    std::string ext = path.substr(dot);
++    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return std::tolower(c); });
++    const std::string extensions = std::string("|") + platform.extensions + "|";
++    return extensions.find("|" + ext + "|") != std::string::npos;
++}
++Launch prepare(const Platform& platform, const std::string& rom, const std::string& n64) {
++    Launch out;
++    const std::string prefix = std::string("usb:/retro/") + platform.id + "/";
++    if (rom.compare(0, prefix.size(), prefix) != 0 || rom.find('\0') != std::string::npos ||
++        rom.find("/../") != std::string::npos || rom.find("/./") != std::string::npos || rom.size() > 220 ||
++        !accepts(platform, rom)) {
++        out.error = "ROM path is invalid for this USB platform";
++        return out;
++    }
++    out.program = std::string("usb:/apps/") + platform.emulator + "/boot.dol";
++    if (std::string(platform.id) == "n64") {
++        if (n64 != "gln64" && n64 != "rice") {
++            out.error = "N64 autoboot adapter is not verified for this emulator";
++            return out;
++        }
++        out.program = "usb:/apps/wii64-" + n64 + "/boot.dol";
++        out.arguments = {rom, "NativeDevice=1", "StatesDevice=1", "AutoSave=1"};
++    } else {
++        const auto slash = rom.find_last_of('/');
++        // GX loaders read directory and filename separately. These strings
++        // are NUL-separated by app_command_line, never shell-quoted.
++        out.arguments = {rom.substr(0, slash + 1), rom.substr(slash + 1)};
++        if (std::string(platform.emulator) == "genplusgx") out.arguments.push_back("riftwii");
++    }
++    return out;
++}
++}
+diff --git a/tests/retrolibrary_tests.cpp b/tests/retrolibrary_tests.cpp
+new file mode 100644
+index 0000000..85cebe2
+--- /dev/null
++++ b/tests/retrolibrary_tests.cpp
+@@ -0,0 +1,31 @@
++// SPDX-FileCopyrightText: 2026 RiftWii contributors
++// SPDX-License-Identifier: GPL-3.0-or-later
++#include "riftwii/retrolibrary.hpp"
++#include "riftwii/appmeta.hpp"
++#include <iostream>
++int main() {
++    using namespace riftwii::retro;
++    int failures = 0;
++    const auto check = [&](bool ok) { if (!ok) ++failures; };
++    check(platforms().size() == 11);
++    for (const auto& p : platforms()) {
++        const std::string extensions=p.extensions;
++        const auto ext=extensions.substr(0,extensions.find('|'));
++        const std::string rom=std::string("usb:/retro/")+p.id+"/Ação & espaço ' teste"+ext;
++        check(accepts(p,rom));
++        auto launch=prepare(p,rom);
++        check(launch.error.empty());
++        check(launch.program.find("usb:/apps/")==0);
++        const auto line=riftwii::app_command_line(launch.program,launch.arguments);
++        check(!line.empty());
++        check(line.find("Ação & espaço ' teste")!=std::string::npos);
++        check(!prepare(p,"sd:/retro/game"+ext).error.empty());
++        check(!prepare(p,std::string("usb:/retro/")+p.id+"/../bad"+ext).error.empty());
++        check(!prepare(p,rom+std::string(1,'\0')).error.empty());
++    }
++    check(prepare(platforms()[5],"usb:/retro/n64/a.v64","rice").program=="usb:/apps/wii64-rice/boot.dol");
++    check(!prepare(platforms()[5],"usb:/retro/n64/a.z64","not64").error.empty());
++    check(!accepts(platforms()[0],"a.zip"));
++    std::cout<<"retrolibrary: "<<failures<<" failure(s)\n";
++    return failures?1:0;
++}
+diff --git a/tests/retroscan_tests.cpp b/tests/retroscan_tests.cpp
+new file mode 100644
+index 0000000..a33800e
+--- /dev/null
++++ b/tests/retroscan_tests.cpp
+@@ -0,0 +1,24 @@
++// SPDX-FileCopyrightText: 2026 RiftWii contributors
++// SPDX-License-Identifier: GPL-3.0-or-later
++#include "retroscan.hpp"
++#include <filesystem>
++#include <fstream>
++#include <iostream>
++namespace riftwii::wii { void logf(const char*, ...) {} }
++int main() {
++    namespace fs=std::filesystem;
++    const auto root=fs::temp_directory_path()/"riftwii-retroscan-fixture";
++    fs::remove_all(root); fs::create_directories(root); const auto before=fs::current_path();fs::current_path(root);
++    std::vector<riftwii::wii::HomebrewApp> apps;
++    riftwii::wii::AppendRetroApps(apps);
++    int failed=!apps.empty();
++    fs::create_directories("usb:/retro/nes");
++    std::ofstream("usb:/retro/nes/Teste com ação.nes")<<"synthetic scanner fixture";
++    riftwii::wii::AppendRetroApps(apps);
++    failed+=apps.size()!=1 || apps[0].problem.empty();
++    apps.clear();fs::create_directories("usb:/apps/fceugx");std::ofstream("usb:/apps/fceugx/boot.dol")<<"fixture";
++    riftwii::wii::AppendRetroApps(apps);
++    failed+=apps.size()!=1 || !apps[0].problem.empty() || apps[0].arguments.size()!=2;
++    fs::current_path(before);fs::remove_all(root);
++    std::cout<<"retroscan: "<<failed<<" failure(s)\n";return failed?1:0;
++}
+diff --git a/wii/launch/channel.cpp b/wii/launch/channel.cpp
+index d1a4098..e1b22ef 100644
+--- a/wii/launch/channel.cpp
++++ b/wii/launch/channel.cpp
+@@ -245,11 +245,11 @@ void clear_return_stub_magic() {
+ // whichever starts first. Left as it was when the Homebrew Channel started
+ // RiftWii (its apps go back to it, as they always have), and not put
+ // there when Settings send the Wii Menu button to the Wii Menu.
+-void plant_return_stub(const u8* dol, u32 size) {
++void plant_return_stub(const u8* dol, u32 size, bool prefer_riftwii) {
+     const riftwii::ReturnStubKind there =
+         riftwii::return_stub_kind(reinterpret_cast<const std::uint8_t*>(RTSTUB_BASE));
+     const bool clear = riftwii::dol_clear_of_return_stub(dol, size);
+-    if (there == riftwii::ReturnStubKind::HomebrewChannel) {
++    if (there == riftwii::ReturnStubKind::HomebrewChannel && !prefer_riftwii) {
+         // The app's sections are copied over the same range: a stub they
+         // overwrite only in part would keep its magic and crash the exit.
+         if (!clear) {
+@@ -261,7 +261,7 @@ void plant_return_stub(const u8* dol, u32 size) {
+         logf("Homebrew app: its exit goes back to the Homebrew Channel, which started RiftWii\n");
+         return;
+     }
+-    const bool back_to_riftwii = Settings().return_to == "riftwii";
++    const bool back_to_riftwii = prefer_riftwii || Settings().return_to == "riftwii";
+     if (!back_to_riftwii || !clear) {
+         // An earlier RiftWii's stub would still be found: its magic goes.
+         if (there == riftwii::ReturnStubKind::RiftWii) clear_return_stub_magic();
+@@ -319,7 +319,7 @@ bool StartHomebrewApp(const std::string& path, std::string& error) {
+     return StartHomebrewApp(path, line, error);
+ }
+ 
+-bool StartHomebrewApp(const std::string& path, const std::string& command_line, std::string& error) {
++bool StartHomebrewApp(const std::string& path, const std::string& command_line, std::string& error, bool prefer_riftwii) {
+     u32 size = 0;
+     u8* dol = dolboot_read(path.c_str(), &size, [](u32 n) -> void* { return memalign(32, n); },
+                             [](void* p) { std::free(p); });
+@@ -330,7 +330,7 @@ bool StartHomebrewApp(const std::string& path, const std::string& command_line,
+         return false;
+     }
+     logf("Homebrew app: starting %s (%u bytes)\n", path.c_str(), static_cast<unsigned>(size));
+-    plant_return_stub(dol, size);
++    plant_return_stub(dol, size, prefer_riftwii);
+     LaunchMusicEnd("the app starts next");
+     LogClose();
+     fatUnmount("sd:");
+diff --git a/wii/launch/channel.hpp b/wii/launch/channel.hpp
+index 7fdcf69..fe0a478 100644
+--- a/wii/launch/channel.hpp
++++ b/wii/launch/channel.hpp
+@@ -63,7 +63,7 @@ bool StartChannelInstaller(std::string& error, bool allow_unmarked = false);
+ // sd: prefix) as the Homebrew Channel does: the running IOS kept. Returns
+ // only if it cannot, with `error` saying why.
+ bool StartHomebrewApp(const std::string& path, std::string& error);
+-bool StartHomebrewApp(const std::string& path, const std::string& command_line, std::string& error);
++bool StartHomebrewApp(const std::string& path, const std::string& command_line, std::string& error, bool prefer_riftwii = false);
+ 
+ // Where a homebrew app RiftWii starts goes when it exits, as the menu can
+ // tell before reading the app: back to the Homebrew Channel when that
+diff --git a/wii/menu/appicon.cpp b/wii/menu/appicon.cpp
+index 34706d0..920c431 100644
+--- a/wii/menu/appicon.cpp
++++ b/wii/menu/appicon.cpp
+@@ -89,7 +89,7 @@ void LoadAppIcon(const std::string& folder) {
+     std::vector<std::uint8_t> png, rgba;
+     int w = 0, h = 0;
+     std::string error;
+-    if (!read_png(folder + "/icon.png", png) || !DecodePngRgba(png, rgba, w, h, error)) {
++    if (!read_png(folder.compare(0, 11, "usb:/retro/") == 0 ? "usb:/retro/covers/" + folder.substr(11) + ".png" : folder + "/icon.png", png) || !DecodePngRgba(png, rgba, w, h, error)) {
+         if (!error.empty()) logf("Homebrew: %s/icon.png: %s\n", folder.c_str(), error.c_str());
+         return;
+     }
+diff --git a/wii/menu/rift_menu.cpp b/wii/menu/rift_menu.cpp
+index 4803a77..b7971ff 100644
+--- a/wii/menu/rift_menu.cpp
++++ b/wii/menu/rift_menu.cpp
+@@ -1245,7 +1245,7 @@ static void BuildHome(const FrontendState& state, std::vector<GridItem>& items,
+ 			if (searching && !MatchesSearch(searchName, apps[i].name, false)) continue;
+ 			GridItem item;
+ 			item.title = apps[i].name;
+-			item.badge = apps[i].path.empty() ? "ELF" : "APP";
++			item.badge = !apps[i].retro_rom.empty() ? apps[i].device : apps[i].path.empty() ? "ELF" : "APP";
+ 			item.key = "app:" + apps[i].folder;
+ 			item.hue = skin::HueFor(apps[i].name);
+ 			items.push_back(std::move(item));
+diff --git a/wii/storage/homebrew.cpp b/wii/storage/homebrew.cpp
+index 6d5cbec..308c6de 100644
+--- a/wii/storage/homebrew.cpp
++++ b/wii/storage/homebrew.cpp
+@@ -1,6 +1,8 @@
+ // SPDX-FileCopyrightText: 2026 RiftWii contributors
+ // SPDX-License-Identifier: GPL-3.0-or-later
+ #include "homebrew.hpp"
++#include "retroscan.hpp"
++#include "riftwii/storagepaths.hpp"
+ 
+ #include <dirent.h>
+ #include <strings.h>
+@@ -106,7 +108,9 @@ void RescanHomebrewApps() {
+     Scan& state = scan();
+     state.apps.clear();
+     state.read = false;
+-    scan_drive(state, "sd:", "SD");
++    if (!PrimaryOnUsb()) scan_drive(state, "sd:", "SD");
++    scan_drive(state, "usb:", "USB");
++    AppendRetroApps(state.apps);
+     // USB game volumes are not libfat devices. Until app reads use the
+     // volume reader too, only offer binaries the stdio launcher can open.
+     std::stable_sort(state.apps.begin(), state.apps.end(), [](const HomebrewApp& a, const HomebrewApp& b) {
+@@ -139,6 +143,28 @@ bool StartHomebrew(const HomebrewApp& app, std::string& error) {
+         error = app.folder + " has no boot.dol to start";
+         return false;
+     }
++    if (!app.retro_rom.empty()) {
++        struct stat info {};
++        if (stat(app.retro_rom.c_str(), &info) != 0 || !S_ISREG(info.st_mode)) {
++            error = "The selected ROM no longer exists on USB";
++            return false;
++        }
++    }
++    if (!app.retro_rom.empty() && app.arguments.size() >= 2 && app.arguments[0].compare(0, 5, "usb:/") == 0 && app.arguments[0].back() == '/') {
++        DIR* dir = opendir(app.arguments[0].c_str());
++        bool ambiguous = false;
++        if (dir) {
++            while (dirent* entry = readdir(dir)) {
++                if (strcasecmp(entry->d_name, app.arguments[1].c_str()) != 0 &&
++                    strcasestr(entry->d_name, app.arguments[1].c_str())) ambiguous = true;
++            }
++            closedir(dir);
++        }
++        if (ambiguous) {
++            error = "The emulator's autoload is ambiguous for this filename; use distinct ROM names";
++            return false;
++        }
++    }
+     const std::string line = riftwii::app_command_line(app.path, app.arguments);
+     if (line.empty()) {
+         error = "the app path is empty, contains a NUL or exceeds the command-line limit";
+@@ -146,7 +172,7 @@ bool StartHomebrew(const HomebrewApp& app, std::string& error) {
+     }
+     logf("Homebrew: starting %s (%s, %u argument(s))\n", app.name.c_str(), app.path.c_str(),
+          static_cast<unsigned>(app.arguments.size()));
+-    return StartHomebrewApp(app.path, line, error);
++    return StartHomebrewApp(app.path, line, error, !app.retro_rom.empty());
+ }
+ 
+ }
+diff --git a/wii/storage/homebrew.hpp b/wii/storage/homebrew.hpp
+index ca422ce..159351d 100644
+--- a/wii/storage/homebrew.hpp
++++ b/wii/storage/homebrew.hpp
+@@ -19,6 +19,7 @@ struct HomebrewApp {
+     std::string description;
+     std::vector<std::string> arguments;
+     std::string problem;
++    std::string retro_rom;
+ };
+ 
+ const std::vector<HomebrewApp>& HomebrewApps();
+diff --git a/wii/storage/retroscan.cpp b/wii/storage/retroscan.cpp
+new file mode 100644
+index 0000000..31814db
+--- /dev/null
++++ b/wii/storage/retroscan.cpp
+@@ -0,0 +1,53 @@
++// SPDX-FileCopyrightText: 2026 RiftWii contributors
++// SPDX-License-Identifier: GPL-3.0-or-later
++#include "retroscan.hpp"
++#include "riftwii/retrolibrary.hpp"
++#include "textfile.hpp"
++#include "log.hpp"
++#include <dirent.h>
++#include <sys/stat.h>
++namespace riftwii::wii {
++namespace {
++bool file(const std::string& path) {
++    struct stat st {};
++    return stat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode) && st.st_size > 0;
++}
++}
++void AppendRetroApps(std::vector<HomebrewApp>& apps) {
++    std::string n64 = "gln64", selected;
++    if (ReadTextFile("usb:/retro/n64/emulator.txt", selected)) {
++        while (!selected.empty() && (selected.back() == '\n' || selected.back() == '\r')) selected.pop_back();
++        n64 = selected;
++    }
++    for (const auto& platform : retro::platforms()) {
++        const std::string folder = std::string("usb:/retro/") + platform.id;
++        DIR* dir = opendir(folder.c_str());
++        if (!dir) continue;
++        unsigned count = 0;
++        while (dirent* entry = readdir(dir)) {
++            const std::string name = entry->d_name;
++            const std::string rom = folder + "/" + name;
++            if (name.empty() || name[0] == '.' || !retro::accepts(platform, name) || !file(rom)) continue;
++            if (apps.size() >= 512) break;
++            const auto launch = retro::prepare(platform, rom, n64);
++            HomebrewApp app;
++            app.name = std::string("[") + platform.title + "] " + name.substr(0, name.find_last_of('.'));
++            app.folder = rom; // Stable per-ROM key for existing favorite/search UI and cover cache.
++            app.path = app.program = launch.program;
++            app.device = platform.title;
++            app.arguments = launch.arguments;
++            app.retro_rom = rom;
++            app.problem = launch.error;
++            if (app.problem.empty() && !file(app.path)) app.problem = "The emulator is missing from USB";
++            if (std::string(platform.id) == "sega-cd" &&
++                (!file("usb:/genplus/bios/bios_CD_U.bin") || !file("usb:/genplus/bios/bios_CD_E.bin") ||
++                 !file("usb:/genplus/bios/bios_CD_J.bin")))
++                app.problem = "Sega CD requires user-provided regional BIOS files in usb:/genplus/bios";
++            apps.push_back(std::move(app));
++            ++count;
++        }
++        closedir(dir);
++        logf("Retro: %s has %u ROM(s); total catalog capped at 512 entries\n", platform.title, count);
++    }
++}
++}
+diff --git a/wii/storage/retroscan.hpp b/wii/storage/retroscan.hpp
+new file mode 100644
+index 0000000..e205fa2
+--- /dev/null
++++ b/wii/storage/retroscan.hpp
+@@ -0,0 +1,5 @@
++// SPDX-FileCopyrightText: 2026 RiftWii contributors
++// SPDX-License-Identifier: GPL-3.0-or-later
++#pragma once
++#include "homebrew.hpp"
++namespace riftwii::wii { void AppendRetroApps(std::vector<HomebrewApp>& apps); }

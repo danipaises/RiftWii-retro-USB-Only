@@ -1,0 +1,484 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index e3c3536..8903df8 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -82,6 +82,11 @@ add_executable(menusound_list tools/menusound_list.cpp)
+ target_link_libraries(menusound_list PRIVATE riftwii)
+ include(CTest)
+ if(BUILD_TESTING)
++    add_executable(startupusb_tests tests/startupusb_tests.cpp wii/storage/startupusb.cpp)
++    target_include_directories(startupusb_tests PRIVATE tests/wii_mock wii/storage wii/launch wii/core)
++    target_link_libraries(startupusb_tests PRIVATE riftwii)
++    target_compile_options(startupusb_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
++    add_test(NAME startupusb COMMAND startupusb_tests)
+     add_executable(umswrite_tests tests/umswrite_tests.cpp wii/storage/umsdev.cpp)
+     target_include_directories(umswrite_tests PRIVATE tests/ums_mock tests/wii_mock wii/storage wii/launch wii/core)
+     target_link_libraries(umswrite_tests PRIVATE riftwii)
+diff --git a/docs/USB_RETURN_FIX.md b/docs/USB_RETURN_FIX.md
+new file mode 100644
+index 0000000..b425cbe
+--- /dev/null
++++ b/docs/USB_RETURN_FIX.md
+@@ -0,0 +1,76 @@
++# USB-only channel return recovery
++
++This is a focused change over the USB-only source exported from
++`58d9ac5ad499aee289c14a7d5131d36ec168d057`. Normal USB startup and game launches
++were reported working on the user's Wii. The reported failure is a readable
++storage error after leaving a game for the RiftWii channel.
++
++## Evidence and scope
++
++* `wii/launch/boot.cpp`, `return_title` and `apply_return_to`, send the game
++  back to the installed channel through ES. They do not call `WarmRestart`.
++* `channel/forwarder/main.c`, `read_dol`, unmounts FAT and calls the selected
++  storage interface's shutdown. `main` then calls `dolboot_run(g_dol, g_path)`.
++  `channel/common/dolboot.c` passes the DOL path, with no restart note or IOS
++  reload. The channel TMD requests IOS58, but the handoff itself does not
++  refresh the IOS USB service between forwarder and application.
++* The previous USB-only `wii/main.cpp` tried USB immediately. Its call to
++  `StartMenuIos` and its later recovery mount used `RestartKind != None` as
++  their fresh-start condition. A normal channel launch has no such note.
++* `wii/launch/menuios.cpp`, `StartMenuIos`, returns without reloading when
++  slot is zero and `fresh` is false. USB menu storage deliberately uses
++  slot zero, meaning IOS58. A channel return therefore skipped this reset,
++  even after a failed initial USB mount.
++* libogc v3.2.1, commit `959871c08ed80d1a63b258bc207218623ea1b0e5`, was
++  inspected as a dependency reference. `__IOS_LoadStartupIOS` in
++  `libogc/ios.c` is a no-op. Storage startup in `libogc/usbstorage.c`
++  initializes USB/storage; it does not reload IOS. Storage shutdown closes
++  the device, and is not equivalent to restarting IOS's USB host.
++
++The confirmed code defect is the missing channel-entry recovery branch.
++The user's failing IOS number, exact rejected IPC request and descriptor
++state have not been captured. An inherited cIOS, or IOS58 with USB service
++state surviving the forwarder handoff, are possibilities, not measured
++facts. No particular stale numeric handle or mount-delay cause is claimed.
++
++## Change
++
++`StartedByRiftWiiChannel` checks the running ES title against the existing
++UFTW and legacy RFTW IDs, before any reload. `MountStartupUsb` forces a fresh
++IOS58 for USB channel entries and USB internal restarts, before mounting SD
++or USB, opening settings or reading the catalog. It also handles the
++no-arguments/no-SD fallback. HBC entries have no additional forced reload.
++
++The existing `reload_ios` performs the cleanup: close logging, flush/unmount
++USB, release the menu storage driver, forget the d2x UMS descriptor, close DI,
++stop other IOS clients, shut down IOS subsystems, launch IOS58, reinitialize
++IPC and initialize subsystems. No second USB driver runs alongside d2x.
++A refused reload is retried once; a failed reset is not accepted solely
++because IOS_GetVersion still reads 58. A terminal IPC failure halts without
++another storage call. No arbitrary sleep or longer FAT retry was added.
++
++Startup diagnostics retain origin, IOS/revision before/after reload, reload
++result/detail and FAT mount result in RAM until session.log opens. Low-level
++USB setup and later app mounts also log IOS/revision, initialization and
++device-list results. If USB remains completely unavailable, it cannot save
++a file there; the diagnostic buffer is not persistent across power loss.
++
++The forwarder, its installed channel and IOS/cIOS installations are unchanged.
++The new path reloads only IOS58. Hardware access is preserved using the
++existing routine only when entering under IOS58; the new path never patches
++an inherited custom IOS such as IOS246. The UI, game-launch policy, themes,
++mods, saves and runtime are unchanged. No channel installer is distributed
++with the fix. The temporary channel build is a compilation check only.
++
++## Validation
++
++See the delivered Portuguese test report and original logs. Host tests use
++the real startup coordinator with simulated IOS/USB functions. A dirty IOS58
++channel return without a restart note fails the old mount-only sequence and
++passes the reset-before-mount sequence. Three simulated return cycles include
++inherited IOS249, IOS246 and IOS58. Reload refusal, same-number failure,
++terminal IPC failure and real mount failure are covered.
++
++These tests prove ordering and error handling in the covered code, not Wii
++hardware behavior. Dolphin cannot validate d2x or the user's USB drive.
++The full three-game sequence remains an acceptance test on the physical Wii.
+diff --git a/tests/startupusb_tests.cpp b/tests/startupusb_tests.cpp
+new file mode 100644
+index 0000000..fff488b
+--- /dev/null
++++ b/tests/startupusb_tests.cpp
+@@ -0,0 +1,138 @@
++// SPDX-FileCopyrightText: 2026 RiftWii contributors
++// SPDX-License-Identifier: GPL-3.0-or-later
++#include "startupusb.hpp"
++#include "ios_reload.hpp"
++
++#include <gccore.h>
++#include <cstdlib>
++#include <iostream>
++#include <string>
++#include <vector>
++#include <sys/wait.h>
++#include <unistd.h>
++
++namespace {
++int failures = 0;
++#define CHECK(c) do { if (!(c)) { std::cerr << __LINE__ << ": " #c "\n"; ++failures; } } while (0)
++int ios = 58;
++bool dirty = false;
++bool mount_ok = true;
++unsigned reloads = 0;
++int refuse_reloads = 0;
++bool terminal = false;
++std::vector<std::string> events;
++std::string detail = "IPC and USB initialized";
++}
++
++s32 IOS_GetVersion() { return ios; }
++s32 IOS_GetRevision() { return ios == 58 ? 6176 : 65535; }
++
++namespace riftwii::wii {
++ReloadResult reload_ios(int target, std::string& error, bool force) {
++    events.push_back("reload " + std::to_string(target));
++    ++reloads;
++    CHECK(target == 58 && force);
++    if (terminal) return ReloadResult::Terminal;
++    if (refuse_reloads-- > 0) {
++        error = "simulated ES failure";
++        return ReloadResult::Failed;
++    }
++    ios = target;
++    dirty = false;
++    return ReloadResult::Ok;
++}
++const std::string& last_reload_detail() { return detail; }
++[[noreturn]] void halt_after_terminal_reload() { _exit(42); }
++bool mount_usb_app(std::string& error) {
++    events.push_back("mount");
++    CHECK(!terminal);
++    if (ios != 58 || dirty || !mount_ok) {
++        error = "simulated unreadable USB service";
++        return false;
++    }
++    return true;
++}
++}
++
++int main() {
++    using namespace riftwii::wii;
++    // The already-working HBC path stays on its current IOS, with one
++    // mount attempt and no extra reload or sleep.
++    StartupUsb start = MountStartupUsb(false, false);
++    CHECK(start.mounted && !start.ios_refreshed && reloads == 0);
++    CHECK(events == std::vector<std::string>{"mount"});
++
++    // Reproduce the old cold-channel path: no restart marker, IOS58 by
++    // number, but its USB service still belongs to the previous handoff.
++    dirty = true;
++    std::string error;
++    CHECK(!mount_usb_app(error));
++    events.clear();
++    start = MountStartupUsb(true, false);
++    CHECK(start.mounted && start.ios_refreshed);
++    CHECK((events == std::vector<std::string>{"reload 58", "mount"}));
++    CHECK(start.diagnostics.find("RiftWii channel, no internal restart note") != std::string::npos);
++    CHECK(start.diagnostics.find("mount attempt 1 on IOS58 rev 6176 succeeded") != std::string::npos);
++
++    // Three game/return cycles: every channel start gets a new service.
++    // Include the user's Fakemote slot as the inherited IOS. Nothing
++    // selects, installs or patches that slot; the only reload target is 58.
++    for (int inherited : {249, 246, 58}) {
++        ios = inherited;
++        dirty = true;
++        events.clear();
++        start = MountStartupUsb(true, false);
++        CHECK(start.mounted && start.ios_refreshed && ios == 58);
++        CHECK((events == std::vector<std::string>{"reload 58", "mount"}));
++        CHECK(start.diagnostics.find("IOS" + std::to_string(inherited)) != std::string::npos);
++    }
++    // The internal restart also resets before mounting, even without a
++    // channel title. main must not force the same reload a second time.
++    ios = 249;
++    events.clear();
++    start = MountStartupUsb(false, true);
++    CHECK(start.mounted && start.ios_refreshed);
++    CHECK((events == std::vector<std::string>{"reload 58", "mount"}));
++
++    // A reload that was refused while IOS58 still reads as the active
++    // version is not success. Retry the reload, not the FAT mount.
++    refuse_reloads = 1;
++    dirty = true;
++    events.clear();
++    start = MountStartupUsb(true, false);
++    CHECK(start.mounted && start.ios_refreshed);
++    CHECK((events == std::vector<std::string>{"reload 58", "reload 58", "mount"}));
++    refuse_reloads = 2;
++    dirty = true;
++    events.clear();
++    start = MountStartupUsb(true, false);
++    CHECK(!start.mounted && !start.ios_refreshed);
++    CHECK((events == std::vector<std::string>{"reload 58", "reload 58"}));
++    CHECK(start.diagnostics.find("no mount attempted") != std::string::npos);
++
++    // A mount failure after a successful reset stays a real mount failure.
++    refuse_reloads = 0;
++    mount_ok = false;
++    events.clear();
++    start = MountStartupUsb(true, false);
++    CHECK(!start.mounted && start.ios_refreshed);
++    CHECK((events == std::vector<std::string>{"reload 58", "mount"}));
++    CHECK(start.diagnostics.find("simulated unreadable USB service") != std::string::npos);
++    mount_ok = true;
++
++    // Terminal IPC failure must halt without another IOS or storage call.
++    const pid_t child = fork();
++    CHECK(child >= 0);
++    if (child == 0) {
++        terminal = true;
++        MountStartupUsb(true, false);
++        _exit(1);
++    }
++    if (child > 0) {
++        int status = 0;
++        CHECK(waitpid(child, &status, 0) == child);
++        CHECK(WIFEXITED(status) && WEXITSTATUS(status) == 42);
++    }
++    std::cout << "startupusb: " << failures << " failure(s)\n";
++    return failures ? 1 : 0;
++}
+diff --git a/wii/launch/channel.cpp b/wii/launch/channel.cpp
+index 26c74e5..d1a4098 100644
+--- a/wii/launch/channel.cpp
++++ b/wii/launch/channel.cpp
+@@ -84,6 +84,15 @@ bool StartedByHomebrewChannel() {
+            riftwii::ReturnStubKind::HomebrewChannel;
+ }
+ 
++bool StartedByRiftWiiChannel() {
++    u64 title = 0;
++    if (ES_GetTitleID(&title) < 0) return false;
++    for (u64 candidate : kChannelTitles) {
++        if (title == candidate) return true;
++    }
++    return false;
++}
++
+ unsigned long long HomebrewChannelTitle() {
+     static const u64 kTitles[] = {0x000100014C554C5Aull, 0x000100014F484243ull, 0x0001000148415858ull,
+                                   0x00010001AF1BF516ull};
+diff --git a/wii/launch/channel.hpp b/wii/launch/channel.hpp
+index 37d3322..7fdcf69 100644
+--- a/wii/launch/channel.hpp
++++ b/wii/launch/channel.hpp
+@@ -34,6 +34,9 @@ unsigned long long ChannelTitle();
+ // 0x80001800 ("STUBHAXX" at 0x80001804), which std::exit goes back
+ // through. Started from the RiftWii channel there is none.
+ bool StartedByHomebrewChannel();
++// The running ES title, not the DOL path (both loaders pass usb:/...).
++// Does not read the NAND or need storage to be mounted.
++bool StartedByRiftWiiChannel();
+ // The Homebrew Channel as an installed title: LULZ (1.1 and later, Wii and
+ // vWii), OHBC (the Open Homebrew Channel), HAXX or JODI (older ones), the
+ // first with a ticket; 0 when none is installed.
+diff --git a/wii/main.cpp b/wii/main.cpp
+index 6d13661..0659794 100644
+--- a/wii/main.cpp
++++ b/wii/main.cpp
+@@ -67,6 +67,7 @@
+ #include "stash.hpp"
+ #include "plugins.hpp"
+ #include "usbcatalog.hpp"
++#include "startupusb.hpp"
+ 
+ // Where the player leaves to (the HOME Menu, wii/menu/rift_menu.cpp): 1 back
+ // to the loader that started RiftWii (the Homebrew Channel), 2 the Wii
+@@ -236,9 +237,8 @@ void OfferRestart(const std::string& error) {
+                               "The launch failed: " + error);
+ }
+ 
+-// libfat's default initializer probes USB as well as SD. Mount only the SD
+-// card here so autorun and the SD-backed package paths work; USB starts when
+-// Home reads the drives (wii/storage/usbcatalog.cpp), after the menu IOS is up.
++// Mount the optional SD explicitly; libfat's default initializer would
++// probe USB too, outside the startup USB/IOS handoff below.
+ // A few tries: some cards are slow to answer right after the Homebrew
+ // Channel lets go of them.
+ bool MountStartupSd() {
+@@ -346,16 +346,28 @@ int main() {
+     riftwii::wii::InitGcRealCards();
+     const riftwii::wii::RestartNote restart = riftwii::wii::TakeRestartNote();
+     riftwii::wii::CrashInstall();
++    const bool from_usb = StartedFromUsb();
++    const bool from_channel = riftwii::wii::StartedByRiftWiiChannel();
++    const bool warm_restart = restart.kind != riftwii::wii::RestartKind::None;
++    riftwii::wii::StartupUsb startup_usb;
++    if (from_usb) {
++        // The forwarder does not create a RestartNote. Reset its IOS USB
++        // service before the first mount, not after settings/catalog reads.
++        // Preserve hardware access only on stock IOS58; do not patch an
++        // inherited custom IOS (including the user's Fakemote IOS246).
++        if ((from_channel || warm_restart) && IOS_GetVersion() == 58 && read32(0x0D800064) == 0xFFFFFFFF)
++            riftwii::wii::keep_hardware_access("USB return");
++        startup_usb = riftwii::wii::MountStartupUsb(from_channel, warm_restart);
++    }
+     const bool sd_mounted = MountStartupSd();
+-    bool usb_mounted = false;
+-    if (StartedFromUsb() || !sd_mounted) {
+-        std::string storage_error;
+-        usb_mounted = riftwii::wii::mount_usb_app(storage_error);
++    if (!from_usb && !sd_mounted) {
++        startup_usb = riftwii::wii::MountStartupUsb(from_channel, warm_restart);
+     }
+-    const auto primary = riftwii::choose_primary_device(StartedFromUsb(), sd_mounted, usb_mounted);
++    const bool usb_mounted = startup_usb.mounted;
++    const auto primary = riftwii::choose_primary_device(from_usb, sd_mounted, usb_mounted);
+     // A warm restart can begin under the game's cIOS, whose USB driver
+     // libogc cannot use. Retain the intended device until IOS58 is back.
+-    riftwii::wii::SelectPrimaryStorage(primary == riftwii::PrimaryDevice::None && StartedFromUsb()
++    riftwii::wii::SelectPrimaryStorage(primary == riftwii::PrimaryDevice::None && (from_usb || from_channel)
+                                          ? riftwii::PrimaryDevice::Usb : primary, sd_mounted);
+     bool app_mounted = sd_mounted || usb_mounted;
+     if (app_mounted) riftwii::wii::CreatePrimaryFolders();
+@@ -387,12 +399,13 @@ int main() {
+     // Home is on screen before the drives are read (a big USB drive takes a
+     // while); the disc is only probed when its tile is picked.
+     OpenSessionLog(app_mounted);
++    riftwii::wii::logf("%s", startup_usb.diagnostics.c_str());
+     // A chosen cIOS (fakemote's USB pads) must be running before the pads
+     // and the drives are brought up.
+     if (restart.kind != riftwii::wii::RestartKind::None) {
+         riftwii::wii::logf("Restarted: %s\n", restart.message.c_str());
+     }
+-    riftwii::wii::StartMenuIos(app_mounted, restart.kind != riftwii::wii::RestartKind::None,
++    riftwii::wii::StartMenuIos(app_mounted, warm_restart && !startup_usb.ios_refreshed,
+                                restart.kind == riftwii::wii::RestartKind::BurnedDisc ? riftwii::wii::BurnedDiscSlot() : 0);
+     // A restart mounts the card before the fresh IOS above, under whatever
+     // the last run left (a tester got "RiftWii needs an SD card" right
+@@ -401,7 +414,9 @@ int main() {
+     if (!app_mounted && restart.kind != riftwii::wii::RestartKind::None) {
+         app_mounted = riftwii::wii::MountPrimaryForMenu();
+         if (app_mounted) {
++            riftwii::wii::CreatePrimaryFolders();
+             OpenSessionLog(true);
++            riftwii::wii::logf("%s", startup_usb.diagnostics.c_str());
+             riftwii::wii::logf("Restarted: %s\n", restart.message.c_str());
+             riftwii::wii::logf("SD card: read only after the restart's fresh IOS%d\n", IOS_GetVersion());
+             // The menu's saved cIOS (menu_ios.txt) could not be read before.
+diff --git a/wii/storage/startupusb.cpp b/wii/storage/startupusb.cpp
+new file mode 100644
+index 0000000..f30cd39
+--- /dev/null
++++ b/wii/storage/startupusb.cpp
+@@ -0,0 +1,50 @@
++// SPDX-FileCopyrightText: 2026 RiftWii contributors
++// SPDX-License-Identifier: GPL-3.0-or-later
++#include "startupusb.hpp"
++
++#include <gccore.h>
++
++#include "ios_reload.hpp"
++#include "usbcatalog.hpp"
++
++namespace riftwii::wii {
++
++StartupUsb MountStartupUsb(bool from_channel, bool warm_restart) {
++    StartupUsb out;
++    out.diagnostics = "USB startup: " + std::string(from_channel ? "RiftWii channel" : "loader") +
++                      (warm_restart ? ", internal restart" : ", no internal restart note") +
++                      "; IOS" + std::to_string(IOS_GetVersion()) + " rev " +
++                      std::to_string(IOS_GetRevision()) + ".\n";
++    if (from_channel || warm_restart) {
++        for (int attempt = 1; attempt <= 2; ++attempt) {
++            std::string error;
++            // A real reload, not a version check or a mount delay. The
++            // shared reload routine releases PPC handles before restarting
++            // IOS and reinitializes IPC and the USB host afterwards.
++            const ReloadResult result = reload_ios(58, error, true);
++            if (result == ReloadResult::Terminal) halt_after_terminal_reload();
++            out.diagnostics += "USB startup: forced IOS58 reload " + std::to_string(attempt) +
++                               " returned " + std::to_string(static_cast<int>(result)) +
++                               "; active IOS" + std::to_string(IOS_GetVersion()) + " rev " +
++                               std::to_string(IOS_GetRevision()) + "; " + last_reload_detail() +
++                               (error.empty() ? "" : "; " + error) + ".\n";
++            if (result == ReloadResult::Ok && IOS_GetVersion() == 58) {
++                out.ios_refreshed = true;
++                break;
++            }
++        }
++        if (!out.ios_refreshed) {
++            out.diagnostics += "USB startup: no mount attempted because a fresh IOS58 could not be confirmed.\n";
++            return out;
++        }
++    }
++    std::string error;
++    out.mounted = mount_usb_app(error);
++    out.diagnostics += "USB startup: mount attempt 1 on IOS" + std::to_string(IOS_GetVersion()) +
++                       " rev " + std::to_string(IOS_GetRevision()) +
++                       (out.mounted ? " succeeded" : " failed") +
++                       (error.empty() ? "" : "; " + error) + ".\n";
++    return out;
++}
++
++}  // namespace riftwii::wii
+diff --git a/wii/storage/startupusb.hpp b/wii/storage/startupusb.hpp
+new file mode 100644
+index 0000000..4b320d8
+--- /dev/null
++++ b/wii/storage/startupusb.hpp
+@@ -0,0 +1,22 @@
++// SPDX-FileCopyrightText: 2026 RiftWii contributors
++// SPDX-License-Identifier: GPL-3.0-or-later
++#pragma once
++
++#include <string>
++
++namespace riftwii::wii {
++
++struct StartupUsb {
++    bool mounted = false;
++    bool ios_refreshed = false;
++    // Kept in RAM until session.log can be opened on the mounted drive.
++    std::string diagnostics;
++};
++
++// Call before mounting SD, opening files or starting menu workers. The
++// channel handoff has no WarmRestart note, and closing its storage handle
++// does not give this DOL a fresh IOS USB service. A channel entry therefore
++// needs a forced IOS58 reload even when the version already reads 58.
++StartupUsb MountStartupUsb(bool from_channel, bool warm_restart);
++
++}  // namespace riftwii::wii
+diff --git a/wii/storage/usbcatalog.cpp b/wii/storage/usbcatalog.cpp
+index 1716bf5..94d0533 100644
+--- a/wii/storage/usbcatalog.cpp
++++ b/wii/storage/usbcatalog.cpp
+@@ -488,11 +488,14 @@ bool ensure_usb(std::string& error, bool startup = false) {
+     // libogc's storage driver and d2x each pick one drive, not always the
+     // same one when two are plugged in (a Wii U's own drive and the games'),
+     // so with more than one RiftWii picks the drive it can read itself.
+-    USB_Initialize();
++    const s32 usb_init = USB_Initialize();
++    logf("USB: IOS%d rev %d; USB host initialization returned %d\n", IOS_GetVersion(), IOS_GetRevision(), usb_init);
+     static usb_device_entry devices[8] ATTRIBUTE_ALIGN(32);
+     u8 listed = 0;
+     u8 drives = 0;
+-    if (USB_GetDeviceList(devices, 8, kUsbClassMassStorage, &listed) >= 0 && listed > 1) {
++    const s32 device_list = USB_GetDeviceList(devices, 8, kUsbClassMassStorage, &listed);
++    logf("USB: device list returned %d with %u entries\n", device_list, static_cast<unsigned>(listed));
++    if (device_list >= 0 && listed > 1) {
+         for (u8 i = 0; i < listed && i < 8; ++i) drives += is_mass_storage(devices[i]) ? 1 : 0;
+     }
+     if (drives > 1) {
+@@ -1909,11 +1912,17 @@ std::vector<std::string> usb_wanted_folders() {
+ }
+ 
+ bool mount_usb_app(std::string& error) {
+-    if (!ensure_usb(error, true)) return false;
++    logf("USB application mount: starting on IOS%d rev %d\n", IOS_GetVersion(), IOS_GetRevision());
++    if (!ensure_usb(error, true)) {
++        logf("USB application mount: failed on IOS%d: %s\n", IOS_GetVersion(), error.c_str());
++        return false;
++    }
+     if (!g_libfat_mounted) {
+         error = "USB-only needs a writable FAT volume for settings, themes and logs";
++        logf("USB application mount: %s\n", error.c_str());
+         return false;
+     }
++    logf("USB application mount: FAT volume is ready on IOS%d\n", IOS_GetVersion());
+     return true;
+ }
+ 
