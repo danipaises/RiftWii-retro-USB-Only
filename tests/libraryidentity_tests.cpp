@@ -14,9 +14,10 @@ int main() {
     if (!riftwii::valid_tile_key(first) || reloaded.size() != 2 || reloaded.recent()[0] != other) return 1;
     riftwii::LoaderSettings settings;
     settings.favorites.insert(first); settings.favorites.insert(other);
+    settings.other["library_platforms"] = "gamecube";
     settings.other["view"] = "all"; settings.other["platform"] = "nes";
     riftwii::LoaderSettings loaded; loaded.parse(settings.serialize());
-    if (loaded.favorites != settings.favorites || loaded.other["platform"] != "nes") return 3;
+    if (loaded.favorites != settings.favorites || loaded.other["platform"] != "nes" || loaded.other["library_platforms"] != "gamecube") return 3;
     // Missing files must be filtered by the catalog, never removed from history.
     if (!reloaded.find(first) || first == other) return 2;
     std::cout << "Library identities survive a serialized history and distinguish platforms.\n";

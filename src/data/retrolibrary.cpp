@@ -51,6 +51,16 @@ bool is_emulator(const std::string& path) {
         if (folded == std::string("usb:/apps/") + app + "/boot.dol") return true;
     return false;
 }
+bool is_library_game(const std::string& rom) {
+    return !rom.empty();
+}
+bool included_in_all(const std::string& platform, const std::string& selection) {
+    bool known = platform == "wii" || platform == "gamecube";
+    for (const auto& candidate : platforms()) known = known || platform == candidate.id;
+    if (!known) return false;
+    if (selection.empty() || selection == "all") return true;
+    return ("," + selection + ",").find("," + platform + ",") != std::string::npos;
+}
 bool accepts(const Platform& platform, const std::string& path) {
     const auto dot = path.find_last_of('.');
     if (dot == std::string::npos) return false;

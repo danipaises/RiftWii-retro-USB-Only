@@ -28,6 +28,24 @@ int main() {
     check(accepts(platforms()[0],"a.ZIP"));
     check(is_emulator("USB:/APPS/FCEUGX/BOOT.DOL"));
     check(!is_emulator("usb:/apps/myhomebrew/boot.dol"));
+    // Regression: ROM and emulator share a DOL, but only the ROM is a game.
+    for (const auto& p : platforms()) {
+        const std::string rom = std::string("usb:/retro/") + p.id + "/Test" + std::string(p.extensions).substr(0, std::string(p.extensions).find('|'));
+        const auto launch = prepare(p, rom);
+        check(is_emulator(launch.program));
+        check(is_library_game(rom));
+        check(!is_library_game(""));
+        check(included_in_all(p.id, "all"));
+        check(!included_in_all(p.id, "gamecube"));
+    }
+    check(included_in_all("gamecube", "gamecube"));
+    check(!included_in_all("wii", "gamecube"));
+    check(included_in_all("nes", "nes,snes"));
+    check(!included_in_all("snes", "nes"));
+    check(!included_in_all("homebrew", "all"));
+    check(!included_in_all("unknown", "all"));
+    check(!included_in_all("gamecube", "none"));
+    check(included_in_all("wii", ""));
     const auto key = stable_key("usb:/retro/nes/Ação.nes", true);
     check(valid_library_key(key));
     check(key != stable_key("usb:/retro/nes/My Ação.nes", true));

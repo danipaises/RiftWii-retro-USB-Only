@@ -1194,7 +1194,7 @@ static std::vector<HomeRow> HomeRows(const FrontendState& state, bool ordered, b
 		const auto& apps = riftwii::wii::HomebrewApps();
 		for (std::size_t i = 0; i < apps.size(); ++i) {
 			const auto& app = apps[i];
-			if (app.device == "SD" || riftwii::retro::is_emulator(app.path)) continue;
+			if (!riftwii::retro::is_library_game(app.retro_rom)) continue;
 			rows.push_back({app.name, app.name, {HomeEntry::Kind::App, i, "", app.name + " " + app.device},
 				app.library_key, app.library_key, nullptr});
 		}
@@ -1263,7 +1263,7 @@ static void BuildHome(const FrontendState& state, std::vector<GridItem>& items, 
 {
 	items.clear();
 	entries.clear();
-	if (g_filter == Filter::Homebrew && g_search.empty()) {
+	if (g_filter == Filter::Homebrew) {
 		const std::vector<riftwii::wii::HomebrewApp>& apps = riftwii::wii::HomebrewApps();
 		const bool searching = !g_search.empty();
 		for (std::size_t i = 0; i < apps.size(); ++i) {
@@ -1308,7 +1308,9 @@ static void BuildHome(const FrontendState& state, std::vector<GridItem>& items, 
 	for (const Row& r : rows) {
 		std::string platform = r.game && r.game->gamecube ? "gamecube" : "wii";
 		if (r.entry.kind == HomeEntry::Kind::App) platform = riftwii::wii::HomebrewApps()[r.entry.index].platform;
-		if (!searching && g_platform != "all" && platform != g_platform) continue;
+		if (g_platform != "all" && platform != g_platform) continue;
+		if (g_filter == Filter::All && g_platform == "all" &&
+			!riftwii::retro::included_in_all(platform, riftwii::wii::Settings().other["library_platforms"])) continue;
 		const bool profile = !r.entry.profile.empty();
 		const bool mods = g_packs.has_packs(r.id);
 		if (searching && !MatchesSearch(r.entry.searchName, r.id, r.game && r.game->gamecube)) continue;
@@ -7142,6 +7144,43 @@ static void RunRowPage(const std::string& title, const std::string& subtitle, st
 	mainWindow->Remove(&w);
 }
 
+// Stored separately from the active view: a platform shortcut must still
+// show its games even when that platform is excluded from All games.
+static void ChooseLibraryPlatforms()
+{
+	std::vector<std::pair<std::string, std::string>> platforms = {{"wii", "Wii"}, {"gamecube", "GameCube"}};
+	for (const auto& platform : riftwii::retro::platforms()) platforms.push_back({platform.id, platform.title});
+	std::set<std::string> selected;
+	for (const auto& platform : platforms)
+		if (riftwii::retro::included_in_all(platform.first, riftwii::wii::Settings().other["library_platforms"]))
+			selected.insert(platform.first);
+	std::vector<FlowRow> rows(platforms.size() + 1);
+	rows[0].kind = FlowRow::Kind::Action;
+	rows[0].label = tr("All games");
+	for (std::size_t i = 0; i < platforms.size(); ++i) {
+		rows[i + 1].kind = FlowRow::Kind::Toggle;
+		rows[i + 1].label = platforms[i].second;
+		rows[i + 1].on = selected.count(platforms[i].first) != 0;
+	}
+	RunRowPage(tr("Games from"), tr("All games"), rows, [](int) { return std::string(); },
+		[&](int i, const PageAside&) {
+			if (i == 0) {
+				for (const auto& platform : platforms) selected.insert(platform.first);
+			} else {
+				const auto& id = platforms[static_cast<std::size_t>(i - 1)].first;
+				if (!selected.erase(id)) selected.insert(id);
+			}
+			std::string stored;
+			for (std::size_t k = 0; k < platforms.size(); ++k) {
+				rows[k + 1].on = selected.count(platforms[k].first) != 0;
+				if (rows[k + 1].on) stored += (stored.empty() ? "" : ",") + platforms[k].first;
+			}
+			riftwii::wii::Settings().other["library_platforms"] = stored.empty() ? "none" : stored;
+			riftwii::wii::SaveSettings();
+			return false;
+		});
+}
+
 static void ChooseLibraryView(const FrontendState& state)
 {
 	std::vector<FlowRow> rows;
@@ -7155,23 +7194,49 @@ static void ChooseLibraryView(const FrontendState& state)
 		views.push_back({filter, platform});
 	};
 	const auto all = HomeRows(state, false, true);
-	add(tr("All games"), Filter::All, "all", all.size());
+	std::size_t included = 0, favorites = 0, recent = 0;
+	for (const auto& row : all) {
+		const std::string platform = row.entry.kind == HomeEntry::Kind::App
+			? riftwii::wii::HomebrewApps()[row.entry.index].platform : row.game && row.game->gamecube ? "gamecube" : "wii";
+		if (riftwii::retro::included_in_all(platform, riftwii::wii::Settings().other["library_platforms"])) ++included;
+		if (riftwii::wii::Settings().favorites.count(row.key)) ++favorites;
+		if (riftwii::wii::History().find(row.key)) ++recent;
+	}
+	add(tr("All games"), Filter::All, "all", included);
 	std::map<std::string, std::size_t> counts;
 	for (const auto& row : all) {
 		const std::string platform = row.entry.kind == HomeEntry::Kind::App
 			? riftwii::wii::HomebrewApps()[row.entry.index].platform : row.game && row.game->gamecube ? "gamecube" : "wii";
 		++counts[platform];
 	}
-	if (counts["wii"]) add("Wii", Filter::All, "wii", counts["wii"]);
-	if (counts["gamecube"]) add("GameCube", Filter::All, "gamecube", counts["gamecube"]);
+	add("Wii", Filter::All, "wii", counts["wii"]);
+	add("GameCube", Filter::All, "gamecube", counts["gamecube"]);
 	for (const auto& platform : riftwii::retro::platforms())
-		if (counts[platform.id]) add(platform.title, Filter::All, platform.id, counts[platform.id]);
-	add(tr("Homebrew"), Filter::Homebrew, "all", counts["homebrew"]);
-	add(tr("Favourites"), Filter::Favorites, "all", riftwii::wii::Settings().favorites.size());
-	add(tr("Recently played"), Filter::Recent, "all", riftwii::wii::History().size());
+		add(platform.title, Filter::All, platform.id, counts[platform.id]);
+	std::size_t applications = 0;
+	for (const auto& app : riftwii::wii::HomebrewApps()) if (app.retro_rom.empty()) ++applications;
+	add(tr("Homebrew"), Filter::Homebrew, "all", applications);
+	add(tr("Favourites"), Filter::Favorites, "all", favorites);
+	add(tr("Recently played"), Filter::Recent, "all", recent);
 	add(tr("Games with mods"), Filter::Mods, "all", 0);
+	add(tr("Games from"), Filter::All, "configure", included);
 	RunRowPage(tr("All games"), "", rows, [](int) { return std::string(); },
-		[&](int i, const PageAside&) { g_filter = views[i].first; g_platform = views[i].second; return true; });
+		[&](int i, const PageAside& aside) {
+			if (views[i].second == "configure") {
+				aside([] { ChooseLibraryPlatforms(); });
+				std::size_t count = 0;
+				for (const auto& row : all) {
+					const std::string platform = row.entry.kind == HomeEntry::Kind::App
+						? riftwii::wii::HomebrewApps()[row.entry.index].platform : row.game && row.game->gamecube ? "gamecube" : "wii";
+					if (riftwii::retro::included_in_all(platform, riftwii::wii::Settings().other["library_platforms"])) ++count;
+				}
+				rows[0].value = rows[static_cast<std::size_t>(i)].value = std::to_string(count);
+				return false;
+			}
+			g_filter = views[i].first;
+			g_platform = views[i].second;
+			return true;
+		});
 }
 
 static bool ChooseLibraryApp(const riftwii::wii::HomebrewApp& app)

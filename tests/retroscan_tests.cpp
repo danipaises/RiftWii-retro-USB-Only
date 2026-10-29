@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "retroscan.hpp"
+#include "riftwii/retrolibrary.hpp"
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -29,7 +30,13 @@ int main() {
     riftwii::wii::AppendRetroApps(apps);
     failed += apps.size() != 3;
     std::set<std::string> keys;
-    for (const auto& app : apps) keys.insert(app.library_key);
+    for (const auto& app : apps) {
+        keys.insert(app.library_key);
+        // This is the actual catalog result: sharing FCEUGX's program must
+        // not remove these ROMs from the games view.
+        failed += !riftwii::retro::is_emulator(app.program);
+        failed += !riftwii::retro::is_library_game(app.retro_rom);
+    }
     failed += keys.size() != 3 || !keys.count(key);
     fs::remove("usb:/retro/nes/Teste com ação.nes");
     apps.clear();
