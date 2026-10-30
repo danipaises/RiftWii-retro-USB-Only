@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "restart.hpp"
+#include "riftwii/usbexitguard.hpp"
 #include "riftwii/storagepaths.hpp"
 
 #include <fat.h>
@@ -52,7 +53,7 @@ struct Handoff {
     char message[kMessageMax];
 };
 
-static_assert(sizeof(Snapshot) + sizeof(Handoff) <= mem::kRestartBytes, "restart area too small");
+static_assert(sizeof(Snapshot) + sizeof(Handoff) <= mem::kRestartBytes - 32, "restart area too small");
 
 Snapshot* snapshot() { return reinterpret_cast<Snapshot*>(mem::kRestartArea); }
 Handoff* handoff() { return reinterpret_cast<Handoff*>(mem::kRestartArea + sizeof(Snapshot)); }
@@ -112,6 +113,23 @@ RestartNote TakeRestartNote() {
 const RestartNote& CurrentRestartNote() { return g_note; }
 
 bool CanRestart() { return snapshot()->magic == kSnapshotMagic && snapshot()->size == data_size(); }
+
+namespace {
+riftwii::UsbExitGuard* usb_exit_guard() {
+    return reinterpret_cast<riftwii::UsbExitGuard*>(mem::kRestartArea + mem::kRestartBytes - 32);
+}
+}
+bool ClaimUsbRecoveryExit() {
+    auto* guard = usb_exit_guard();
+    const bool claimed = riftwii::claim_usb_exit(*guard, data_size());
+    DCFlushRange(guard, 32);
+    return claimed;
+}
+void ClearUsbRecoveryExit() {
+    auto* guard = usb_exit_guard();
+    guard->magic = 0;
+    DCFlushRange(guard, 32);
+}
 
 bool WarmRestart(RestartKind kind, const std::string& message, bool unmount) {
     if (!CanRestart()) return false;

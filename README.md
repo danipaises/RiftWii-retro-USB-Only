@@ -1,10 +1,10 @@
-# RiftWii Retro USB-Only — v0.1.0-alpha.4
+# RiftWii Retro USB-Only — v0.1.0-alpha.5
 
 Projeto exclusivo: https://github.com/danipaises/RiftWii-retro-USB-Only
 
 A base USB-only anterior foi recuperada com fontes e DOL preservados. Esta
 alpha.2 foi testada pelo usuário no Wii e apresentou falhas reais. As correções
-da alpha.4 são experimentais e ainda exigem confirmação no console.
+da alpha.5 são experimentais e ainda exigem confirmação no console.
 Leia [o estado real e as pendências](retro-integration/STATUS.md).
 
 ## Instalação e atualização
@@ -34,7 +34,7 @@ não apresentados como recompilados. Fontes correspondentes acompanham o kit.
 
 A base alpha.3 passou em 121 testes C/C++ e 14 testes Python, compilação Wii/canal,
 verificação de traduções e correspondência de plugins. O pacote é validado
-automaticamente. Veja [roteiro físico](retro-integration/HARDWARE-alpha3.md).
+automaticamente. Veja [roteiro físico](retro-integration/HARDWARE-alpha5.md).
 `python3 usb_update.py --usb /media/usuario/PENDRIVE` consulta componentes;
 a instalação Linux exige `--apply --yes` e registro de fábrica verificável.
 O atualizador no Wii permanece bloqueado.

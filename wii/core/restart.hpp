@@ -35,6 +35,10 @@ const RestartNote& CurrentRestartNote();
 
 // Whether the snapshot is in place (a restart is possible).
 bool CanRestart();
+// One automatic use of the recovery screen's Exit path per failed chain.
+// Kept in the reserved restart RAM, never on NAND or on an unreadable USB.
+bool ClaimUsbRecoveryExit();
+void ClearUsbRecoveryExit();
 
 // Restarts RiftWii; returns only if it cannot (no snapshot). `unmount`
 // is false after a crash, when the card's lock may be held.

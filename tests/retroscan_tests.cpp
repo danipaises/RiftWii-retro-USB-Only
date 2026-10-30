@@ -42,6 +42,31 @@ int main() {
     apps.clear();
     riftwii::wii::AppendRetroApps(apps);
     failed += apps.size() != 2;
+    // Reproduce the hardware report: 26 apps used to leave exactly 486
+    // NES slots and zero for SNES/GBA. Actual scanner, actual filesystem.
+    for (int i = 0; i < 600; ++i)
+        std::ofstream("usb:/retro/nes/Bulk" + std::to_string(i) + ".nes") << "synthetic fixture";
+    fs::create_directories("usb:/retro/snes");
+    fs::create_directories("usb:/retro/gba");
+    std::ofstream("usb:/retro/snes/Test.sfc") << "synthetic fixture";
+    std::ofstream("usb:/retro/gba/Test.gba") << "synthetic fixture";
+    apps.assign(26, riftwii::wii::HomebrewApp{});
+    riftwii::wii::AppendRetroApps(apps);
+    unsigned nes = 0, snes = 0, gba = 0;
+    for (const auto& app : apps) {
+        nes += app.platform == "nes";
+        snes += app.platform == "snes";
+        gba += app.platform == "gba";
+    }
+    failed += nes != 602 || snes != 1 || gba != 1;
+    // Even a per-console overflow must not hide the following consoles.
+    for (int i = 600; i < 2200; ++i)
+        std::ofstream("usb:/retro/nes/Bulk" + std::to_string(i) + ".nes") << "synthetic fixture";
+    apps.assign(26, riftwii::wii::HomebrewApp{});
+    riftwii::wii::AppendRetroApps(apps);
+    snes = gba = 0;
+    for (const auto& app : apps) { snes += app.platform == "snes"; gba += app.platform == "gba"; }
+    failed += snes != 1 || gba != 1;
     fs::current_path(before);fs::remove_all(root);
     std::cout<<"retroscan: "<<failed<<" failure(s)\n";return failed?1:0;
 }

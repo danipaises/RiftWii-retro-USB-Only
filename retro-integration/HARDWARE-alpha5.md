@@ -1,0 +1,11 @@
+# Validação no Wii — alpha.5 (pendente)
+
+Faça backup completo. Preserve o pacote anterior e não formate o USB. Não instale WADs/IOS/cIOS e não altere IOS246. Use arquivos legais e saves de teste.
+
+1. Atualize o programa e plugins juntos via Update, com o Wii desligado. Confirme `apps/riftwii/boot.dol` e o meta.xml alpha.5. Inicie pelo HBC USB, sem SD.
+2. Confira a biblioteca real. Uma coleção NES acima de 486 entradas não deve impedir SNES/GBA. Verifique os caminhos `retro/nes`, `retro/snes`, `retro/gba` e os diretórios nativos já suportados. Um console acima de sua cota pode truncar sua própria lista, mas não deve bloquear os demais. Consulte session.log para limites/falta de memória.
+3. Inicie um NES conhecido, depois SNES e GBA. Deve carregar a ROM diretamente. Ao relatar falha, preserve boot.log antes de novas tentativas e diga se chegou a ver o emulador, o menu original de canais ou o RiftWii. A ordem de encerramento WPAD/IOS58 estará registrada. Não presumir que toda saída imediata tem a mesma causa.
+4. Saia de um jogo pelo caminho que antes mostrava “No readable storage”. O RiftWii deve seguir automaticamente a ação que Exit executava. Confirme que chega à biblioteca funcional, sem clique e sem passar manualmente pelo HBC. Repita três jogos e também o canal existente. Não instale canal novo.
+5. Verifique a proteção em caso de falha repetida num ambiente de teste: a segunda falha da mesma cadeia deve mostrar recuperação, em vez de repetir saídas sem parar. A marca é RAM e seu comportamento pelo HBC/canal real precisa de confirmação. Se algum loader sobrescrever a área e ocorrer repetição, desligue o console e volte ao pacote preservado; envie detalhes do caminho usado.
+6. Com o USB funcionando, inicie outro jogo e confirme que uma nova recuperação pode ocorrer. Teste várias inicializações, saves e states em cada emulador, jogos Wii/GC, filtros, favoritos, recentes e controles. Fakemote no emulador sob IOS58 continua dependendo de validação; não modifique IOS246 para tentar resolver.
+7. Preserve `riftwii/session.log`, `riftwii/boot.log` e os arquivos em `riftwii/logs`, caso existam. Não envie ROMs, BIOS, chaves ou dumps da NAND. A confirmação final depende desses resultados físicos.

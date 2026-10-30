@@ -100,7 +100,7 @@ with tempfile.TemporaryDirectory() as work:
     for f in ['README.md','LICENSE','NOTICE.md'] :shutil.copy2(ROOT/f,stage/f)
     shutil.copy2(ROOT/'retro-integration/emulators.lock.json',stage/'sources/emulators.lock.json')
     shutil.copy2(ROOT/'retro-integration/STATUS.md',stage/'LEIA-ME.md')
-    shutil.copy2(ROOT/'retro-integration/HARDWARE-alpha4.md',stage/'TESTE-NO-WII.md')
+    shutil.copy2(ROOT/'retro-integration/HARDWARE-alpha5.md',stage/'TESTE-NO-WII.md')
     shutil.copy2(ROOT/'tools/usb_update.py',stage/'usb_update.py')
     source_archive(stage/'sources/riftwii-source.tar.gz')
     required=['riftwii','fceugx','snes9xgx','vbagx','genplusgx','wii64-gln64','wii64-rice']
@@ -132,7 +132,7 @@ with tempfile.TemporaryDirectory() as work:
         for f in managed:z.write(f,f.relative_to(stage).as_posix())
     update={'schema':1,'repository':'danipaises/RiftWii-retro-USB-Only','version':VERSION,'approved':True,
             'hardware_validated':False,'experimental':True,'components':components,
-            'changes':'ROMs visíveis na biblioteca; Homebrew separado; filtros por console com contagens; plataformas de Todos os jogos configuráveis. Validação física pendente.',
+            'changes':'Catálogo sem a cota global de 512; limites independentes por console; recuperação USB pelo caminho Exit; comunicação WPAD encerrada antes do IOS58. Validação física pendente.',
             'package':{'url':'https://github.com/danipaises/RiftWii-retro-USB-Only/releases/download/'+VERSION+'/'+incremental.name,
                        'size':incremental.stat().st_size,'sha256':hashlib.sha256(incremental.read_bytes()).hexdigest()},
             'files':[{'path':f.relative_to(stage).as_posix(),'size':f.stat().st_size,'sha256':state['files'][f.relative_to(stage).as_posix()]} for f in managed]}

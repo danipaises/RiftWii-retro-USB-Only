@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 RiftWii contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "startupusb.hpp"
+#include "riftwii/usbexitguard.hpp"
 #include "ios_reload.hpp"
 
 #include <gccore.h>
@@ -56,6 +57,13 @@ bool mount_usb_app(std::string& error) {
 
 int main() {
     using namespace riftwii::wii;
+    riftwii::UsbExitGuard guard{};
+    CHECK(riftwii::claim_usb_exit(guard, 100));
+    CHECK(!riftwii::claim_usb_exit(guard, 100));
+    guard.magic = 0; // USB has mounted: a later return gets its own attempt.
+    CHECK(riftwii::claim_usb_exit(guard, 100));
+    CHECK(!riftwii::claim_usb_exit(guard, 100));
+    CHECK(riftwii::claim_usb_exit(guard, 101));
     // The already-working HBC path stays on its current IOS, with one
     // mount attempt and no extra reload or sleep.
     StartupUsb start = MountStartupUsb(false, false);

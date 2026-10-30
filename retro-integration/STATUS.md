@@ -1,31 +1,33 @@
-# v0.1.0-alpha.4 — biblioteca e filtros (experimental)
+# v0.1.0-alpha.5 — catálogo e recuperação USB (experimental)
 
 Repositório: https://github.com/danipaises/RiftWii-retro-USB-Only
 
-## Correção encontrada
+## Catálogo: defeito reproduzido e corrigido
 
-Na alpha.3, HomeRows filtrava entradas por `is_emulator(app.path)`. Uma ROM usa o mesmo executável de seu emulador, portanto o filtro também removia todas as ROMs. O scanner podia encontrar os arquivos sem que aparecessem nos jogos. A alpha.4 classifica o item pelo caminho da ROM (`retro_rom`), sem confundir o jogo com o executável. Testes cobrem a passagem scanner → catálogo → filtro com esse compartilhamento de DOL.
+A alpha.4 tinha um teto global de 512 entradas incluindo aplicativos. O scanner lia NES primeiro. A reprodução com 26 aplicativos, 600 arquivos NES e um arquivo SNES/GBA encontrou exatamente 486 NES e zero SNES/GBA, como o padrão observado na foto do usuário.
 
-## Três mudanças
+A alpha.5 separa o orçamento de cada plataforma e dos aplicativos. O mesmo teste agora encontra 600 NES, um SNES e um GBA. Os testes também excedem a cota NES e verificam que SNES/GBA continuam sendo lidos. As pastas USB e extensões existentes são preservadas.
 
-1. **Homebrew separado:** Todos os jogos, favoritos e recentes de jogos listam Wii, GameCube e ROMs presentes. Aplicativos e emuladores ficam em Homebrew. A busca dentro de Homebrew procura só aplicativos; a busca dos jogos respeita o filtro escolhido.
-2. **Todos os jogos configurável:** na mesma tela de seleção da foto, role até **Jogos de** (Games from). Marque quais plataformas entram em Todos os jogos. Pode deixar apenas GameCube, Wii e retrô juntos ou outra combinação. A seleção é salva; desmarcar um console não apaga jogos nem histórico. A primeira linha da configuração ativa todos os consoles novamente.
-3. **Cada console na lista:** Wii, GameCube, NES, SNES, GB, GBC, GBA, N64, Master System, Mega Drive, Game Gear, SG-1000 e Sega CD têm opções próprias, inclusive com contagem zero. Isso não cria títulos fictícios. Um atalho de console mostra seus jogos independentemente das exclusões feitas em Todos os jogos. Homebrew, favoritos e recentes têm contagens correspondentes às suas próprias listas.
+A biblioteca continua limitada para caber no Wii: até 2048 ROMs e 2 MiB estimados de metadados por console, valendo o primeiro teto atingido. O scanner verifica espaço antes de ampliar a lista e deixa margem para a interface. Não há promessa de biblioteca ilimitada: excessos e falta de memória são registrados em session.log. Não se leem ROMs inteiras nem centenas de capas durante a indexação. O cache de capas continua com 24 imagens. Bibliotecas grandes ainda exigem teste de memória e desempenho no Wii.
 
-A captura do usuário na alpha.3 mostrava 32 itens = 11 Wii + 6 GC + 15 homebrews. Com esses mesmos arquivos e sem ROMs reconhecidas, Todos os jogos passa a contar 17, enquanto Homebrew permanece separado. O número real aumenta quando as ROMs são encontradas.
+## Tela USB: mesmo caminho do botão Exit
+
+O usuário confirmou que apertar Exit na tela “No readable storage” abre o RiftWii funcional. A alpha.5 executa automaticamente o mesmo resultado MENU_EXIT, respeitando o destino já usado por esse botão. Não substitui isso por um salto para outro loader e não marca um USB não montado como montado.
+
+Uma marca na área RAM já reservada ao reinício permite uma saída automática por cadeia de falha. Se o mesmo início voltar sem conseguir montar, a tela de recuperação reaparece para permitir intervenção. Quando o armazenamento funciona, a marca é limpa, habilitando a recuperação num retorno futuro. Não é criada marca na NAND nem no USB inacessível. Os testes verificam a política da marca; sua preservação pelo HBC/canal do usuário exige confirmação física. Outros loaders que sobrescrevam essa RAM não estão validados.
+
+## Lançamento NES/SNES/GBA
+
+O caminho retrô reiniciava IOS58 enquanto a comunicação WPAD podia continuar ativa. Agora encerra os pedidos dos controles antes dessa troca de IOS, conforme o contrato já existente em ios_reload.hpp. Os argumentos continuam sendo diretório e nome da ROM separados por NUL, com verificação do arquivo e do bloco de argumentos do DOL. O log registra o encerramento WPAD, IOS, montagem e argumentos antes da transferência ao emulador.
+
+Essa ordem foi corrigida em código; ainda não comprova que era a única causa da saída imediata observada no NES. Não há confirmação física de autoboot/USB/saves/retorno nesta versão. Se persistir, preservar boot.log e informar se voltou ao menu de canais ou ao RiftWii. Os binários dos emuladores permanecem fixados nas mesmas versões; não são anunciados como recompilados ou corrigidos internamente.
 
 ## Instalação
 
-Faça backup. Para uma instalação existente use o Update, confira os destinos e copie os arquivos para a raiz do USB com o Wii desligado. Para uma instalação nova, use o Kit completo. O caminho deve ser `apps/riftwii/boot.dol`, com meta.xml, icon.png, fonte e plugins correspondentes. Não misture somente o DOL novo com plugins antigos. Não é necessário desinstalar emuladores, apagar configurações ou formatar.
+Desligue o Wii, faça backup e copie o Update para a raiz do USB, conferindo arquivos personalizados. Atualize DOL e plugins juntos. Para primeira instalação, use o Kit completo. O executável fica em `apps/riftwii/boot.dol`, com meta.xml, icon.png, fonte e plugins correspondentes. Não é necessário apagar configurações, ROMs, BIOS ou saves, reinstalar canais ou formatar o USB.
 
-As ROMs continuam em `retro/<plataforma>` (ex.: `retro/nes/Jogo.nes`, `retro/snes/Jogo.sfc`, `retro/gba/Jogo.gba`), com subpastas e os diretórios nativos já suportados. Uma opção de console com zero indica que nenhum título está no catálogo dessa plataforma: confira caminho, formato e logs. O filtro corrigido não comprova a leitura das ROMs específicas do seu USB.
+Permanecem Todos os jogos sem aplicativos, Homebrew separado, filtros por console e seleção persistente em Jogos de. Não são instalados IOS/cIOS/WADs e o IOS246 não é alterado. O atualizador no Wii permanece bloqueado. O script Linux continua experimental, com verificação, lista de destinos permitidos, backup e rollback. Releases anteriores permanecem preservados.
 
-Os emuladores e o fluxo IOS58/autoboot da alpha.3 permanecem iguais. Esta versão não altera IOS246, cIOS ou NAND. Não inclui ROMs ou BIOS. Não escreve nem remove saves para configurar filtros. O atualizador Linux continua experimental; o atualizador no Wii permanece desativado. Confira SHA256SUMS, manifesto, fontes e licenças nos arquivos do Release. A alpha.3 continua preservada em seu próprio Release.
+## Verificações e pendências
 
-## Testes e limites
-
-Os testes automatizados verificam ROMs que compartilham o DOL do emulador, separação de aplicativos, filtros, seleção exclusiva GC, múltiplas plataformas, seleção vazia, persistência, scanner, argumentos e atualização/rollback. O workflow exige testes, traduções, compilação Wii/canal, plugins e validação do Kit antes da publicação.
-
-A nova interface e o conteúdo do USB do usuário ainda exigem validação visual em Dolphin e teste no Wii físico. Não declarar correção definitiva de USB/autoboot/retorno com base nesses testes de catálogo. Capas Shelf/Carousel/3D e resumo de adicionados/removidos continuam pendentes, como na alpha.3.
-
-No Wii: abra a tela de filtros, confira que aplicativos não contam como jogos; entre em NES/SNES/GBA e veja a contagem; em Jogos de deixe somente GameCube, volte a Todos os jogos e reinicie para verificar persistência. Reative todos; teste favoritos, recentes, busca, execução e retorno. Se um console continuar zerado, envie `riftwii/session.log` e exemplos de caminhos/extensões (sem ROMs). Para falhas no lançamento, preserve também `riftwii/boot.log`.
+O workflow exige testes C/C++, Python, traduções, build Wii/canal, plugins e validação do Kit antes de publicar. A reprodução do limite e a política da saída automática são testes de computador, não de hardware. A nova interface de recuperação, a retenção da marca através de Exit e os emuladores precisam de teste físico; não foram apresentados como testados em Dolphin. Capas Shelf/Carousel/3D e resumo de adicionados/removidos continuam pendentes.

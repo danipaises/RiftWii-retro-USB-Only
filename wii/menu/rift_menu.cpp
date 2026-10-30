@@ -13003,6 +13003,13 @@ void SetNoSdCard(bool fromUsb) { g_noSdFromUsb = fromUsb; }
 
 static int MenuNeedsSd()
 {
+	if (g_noSdFromUsb && riftwii::wii::ClaimUsbRecoveryExit()) {
+		// Exactly the existing Exit button result, including the existing
+		// exit destination and libogc return stub. No alternate loader path.
+		logf("USB recovery: automatically taking the Exit path once\n");
+		HaltGui();
+		return MENU_EXIT;
+	}
 	// Started again after a failed launch, a crash or Try again: a card is
 	// most likely in the slot, just not answering.
 	const bool restarted = riftwii::wii::CurrentRestartNote().kind != riftwii::wii::RestartKind::None;

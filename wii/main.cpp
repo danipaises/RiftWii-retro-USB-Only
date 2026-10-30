@@ -567,6 +567,7 @@ int main() {
     }
     app_mounted = riftwii::wii::PrimaryStorageMounted();
     if (!app_mounted) SetNoSdCard(StartedFromUsb() || !sd_mounted);
+    else riftwii::wii::ClearUsbRecoveryExit();
     const int action = MainMenu(app_mounted ? MENU_SOURCE : MENU_NEEDS_SD, state);
     MenuWatchdogStop();
     // The card goes to the launch from here: the full font's file is let go

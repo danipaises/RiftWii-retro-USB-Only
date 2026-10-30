@@ -328,6 +328,10 @@ bool StartHomebrewApp(const std::string& path, const std::string& command_line, 
     if (prefer_riftwii && PrimaryOnUsb()) {
         logf("Retro handoff: entering on IOS%d rev %d; resetting IOS58 before reading the emulator DOL\n", IOS_GetVersion(), IOS_GetRevision());
         if (IOS_GetVersion() == 58 && read32(0x0D800064) == 0xFFFFFFFF) keep_hardware_access("Retro handoff");
+        // WPAD has asynchronous IOS requests. They must not outlive the
+        // current IOS and answer against the emulator's IPC state.
+        release_wii_remotes();
+        logf("Retro handoff: Wii Remote IPC stopped before IOS reload\n");
         // reload_ios flushes the old mount and closes both storage clients.
         // Do this before allocating the DOL: IOS overwrites low MEM2.
         const ReloadResult result = reload_ios(58, error, true);
